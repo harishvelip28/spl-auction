@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shigao Premier League 2026 – Player Auction</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #050a14;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .root {
+      background: #0a0f1e;
+      border-radius: 14px;
+      overflow: hidden;
+      color: #fff;
+      width: 100%;
+      max-width: 1100px;
+      border: 1px solid #1e2d50;
+    }
+
+    .hdr {
+      background: #0d1428;
+      border-bottom: 1px solid #1e2d50;
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 14px; }
+    .logo {
+      width: 46px; height: 46px;
+      background: #c9a227;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 15px; color: #0a0f1e;
+      flex-shrink: 0;
+    }
+    .ttl { font-size: 17px; font-weight: 700; color: #c9a227; line-height: 1.2; }
+    .ttl small { font-size: 11px; color: #7a8aaa; font-weight: 400; display: block; margin-top: 2px; letter-spacing: .5px; }
+
+    .stats { display: flex; gap: 24px; flex-wrap: wrap; }
+    .stat { text-align: center; min-width: 52px; }
+    .stat-v { font-size: 22px; font-weight: 800; color: #c9a227; line-height: 1; }
+    .stat-l { font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
+
+    .body { display: grid; grid-template-columns: 1fr 300px; min-height: 560px; }
+
+    .stage {
+      padding: 22px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+      border-right: 1px solid #1e2d50;
+    }
+    .stage-lbl { font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 1.5px; }
+
+    .pcard {
+      background: #0d1428;
+      border: 1px solid #1e2d50;
+      border-radius: 14px;
+      width: 100%; max-width: 370px;
+      overflow: hidden; position: relative;
+    }
+    .pcard-av {
+      width: 100%; height: 200px;
+      background: #111c33;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 64px; font-weight: 800; color: #c9a227;
+      letter-spacing: -2px; overflow: hidden;
+    }
+    .pcard-av img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+    .pcard-body { padding: 16px 18px; }
+    .pname { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .pfrom { font-size: 12px; color: #7a8aaa; display: flex; align-items: center; gap: 5px; margin-bottom: 12px; }
+    .pfrom svg { flex-shrink: 0; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .bdg { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; letter-spacing: .3px; }
+    .bdg-bat   { background: #0d2b0d; color: #4caf50; border: 1px solid #1a5c1a; }
+    .bdg-bowl  { background: #0d1a3a; color: #7986cb; border: 1px solid #1a2d6b; }
+    .bdg-all   { background: #2b1f00; color: #c9a227; border: 1px solid #5c4400; }
+    .bdg-wk    { background: #2b1000; color: #ff9800; border: 1px solid #5c3000; }
+    .bdg-hand  { background: #1e2d50; color: #90a4d4; border: 1px solid #2a3d6a; }
+
+    .divider { height: 1px; background: #1e2d50; margin: 12px 0; }
+    .bid-row { display: flex; align-items: flex-end; justify-content: space-between; }
+    .base-lbl { font-size: 11px; color: #7a8aaa; margin-bottom: 3px; }
+    .base-val { font-size: 15px; font-weight: 600; color: #fff; }
+    .cur-lbl  { font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: .5px; text-align: right; margin-bottom: 3px; }
+    .cur-val  { font-size: 28px; font-weight: 800; color: #c9a227; text-align: right; line-height: 1; }
+
+    .overlay {
+      display: none; position: absolute; inset: 0;
+      background: rgba(0,0,0,.78);
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 8px; border-radius: 14px;
+    }
+    .overlay.show { display: flex; }
+    .ov-txt   { font-size: 44px; font-weight: 900; letter-spacing: 3px; }
+    .ov-price { font-size: 20px; font-weight: 600; color: #c9a227; }
+
+    @keyframes popIn {
+      0%  { transform: scale(.6); opacity: 0; }
+      60% { transform: scale(1.12); }
+      100%{ transform: scale(1);   opacity: 1; }
+    }
+    .overlay.show .ov-txt { animation: popIn .3s ease forwards; }
+
+    .ctrls {
+      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px; width: 100%; max-width: 370px;
+    }
+    .cbtn {
+      padding: 10px 4px; border-radius: 8px; border: none;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      letter-spacing: .3px; line-height: 1.4;
+    }
+    .cbtn:hover:not(:disabled)  { opacity: .82; }
+    .cbtn:active:not(:disabled) { transform: scale(.97); }
+    .cbtn:disabled { opacity: .25; cursor: not-allowed; }
+    .cbtn-raise  { background: #1e2d50; color: #90a4d4; }
+    .cbtn-sold   { background: #0d2b0d; color: #4caf50; border: 1px solid #1a5c1a; }
+    .cbtn-unsold { background: #2b0d0d; color: #ef5350; border: 1px solid #5c1a1a; }
+    .cbtn-next   { background: #c9a227; color: #0a0f1e; }
+
+    .sb { background: #080d1a; display: flex; flex-direction: column; }
+    .sb-hdr {
+      padding: 13px 16px; border-bottom: 1px solid #1e2d50;
+      font-size: 11px; color: #7a8aaa;
+      text-transform: uppercase; letter-spacing: .5px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .sb-hdr span { color: #c9a227; font-size: 16px; font-weight: 700; }
+
+    .sb-filters {
+      padding: 9px 12px; border-bottom: 1px solid #1e2d50;
+      display: flex; gap: 5px; flex-wrap: wrap;
+    }
+    .fb {
+      font-size: 10px; padding: 3px 9px; border-radius: 20px;
+      border: 1px solid #1e2d50; background: transparent; color: #7a8aaa;
+      cursor: pointer; font-weight: 600; transition: all .15s;
+    }
+    .fb.on { background: #1e2d50; color: #90a4d4; border-color: #2a3d6a; }
+    .fb:hover:not(.on) { background: #0d1428; color: #fff; }
+
+    .plist { overflow-y: auto; flex: 1; max-height: 420px; }
+    .plist::-webkit-scrollbar { width: 4px; }
+    .plist::-webkit-scrollbar-thumb { background: #1e2d50; border-radius: 4px; }
+
+    .prow {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-bottom: 1px solid #0d1428;
+      cursor: pointer; transition: background .12s;
+      border-left: 2px solid transparent;
+    }
+    .prow:hover { background: #0d1428; }
+    .prow.cur   { background: #0d1428; border-left-color: #c9a227; }
+
+    .pav {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #111c33;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #c9a227;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .pav img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+
+    .pinfo { flex: 1; min-width: 0; }
+    .pinfo-name { font-size: 12px; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pinfo-sub  { font-size: 10px; color: #7a8aaa; margin-top: 2px; }
+
+    .pstatus { font-size: 10px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; font-weight: 600; }
+    .ps-av     { background: #1e2d50; color: #90a4d4; }
+    .ps-sold   { background: #0d2b0d; color: #4caf50; }
+    .ps-unsold { background: #2b0d0d; color: #ef5350; }
+    .ps-cur    { background: #2b1f00; color: #c9a227; }
+
+    .csvbar {
+      background: #0d1428; border-top: 1px solid #1e2d50;
+      padding: 10px 12px; display: flex; gap: 7px; align-items: center;
+    }
+    .csvbar input {
+      flex: 1; min-width: 0; background: #111c33;
+      border: 1px solid #1e2d50; border-radius: 7px;
+      padding: 7px 10px; font-size: 11px; color: #fff; outline: none;
+    }
+    .csvbar input::placeholder { color: #7a8aaa; }
+    .csvbar input:focus { border-color: #2a3d6a; }
+    .lbtn {
+      padding: 7px 11px; border: none; border-radius: 7px;
+      font-size: 11px; cursor: pointer; font-weight: 700;
+      white-space: nowrap; transition: opacity .15s;
+    }
+    .lbtn:hover { opacity: .82; }
+    .lbtn-load { background: #1e2d50; color: #90a4d4; }
+    .lbtn-demo { background: #2b1f00; color: #c9a227; }
+
+    @media (max-width: 700px) {
+      .body { grid-template-columns: 1fr; }
+      .stage { border-right: none; border-bottom: 1px solid #1e2d50; }
+      .sb { min-height: 300px; }
+      .plist { max-height: 250px; }
+      .stats { gap: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="root">
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="logo">SPL</div>
+      <div>
+        <div class="ttl">Shigao Premier League
+          <small>Player Auction 2026</small>
+        </div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-v" id="s-total">0</div><div class="stat-l">Total</div></div>
+      <div class="stat"><div class="stat-v" id="s-sold"   style="color:#4caf50">0</div><div class="stat-l">Sold</div></div>
+      <div class="stat"><div class="stat-v" id="s-unsold" style="color:#ef5350">0</div><div class="stat-l">Unsold</div></div>
+      <div class="stat"><div class="stat-v" id="s-rem">0</div><div class="stat-l">Remaining</div></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="stage">
+      <div class="stage-lbl">Now on auction</div>
+      <div class="pcard" id="pcard">
+        <div class="pcard-av" id="main-av">SPL</div>
+        <div class="pcard-body">
+          <div class="pname" id="main-name">Load players to begin</div>
+          <div class="pfrom" id="main-from">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="#7a8aaa">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>—
+          </div>
+          <div class="badges" id="main-badges"></div>
+          <div class="divider"></div>
+          <div class="bid-row">
+            <div><div class="base-lbl">Base price</div><div class="base-val" id="main-base">—</div></div>
+            <div><div class="cur-lbl">Current bid</div><div class="cur-val" id="main-bid">—</div></div>
+          </div>
+        </div>
+        <div class="overlay" id="overlay">
+          <div class="ov-txt"   id="ov-txt">SOLD!</div>
+          <div class="ov-price" id="ov-price"></div>
+        </div>
+      </div>
+      <div class="ctrls">
+        <button class="cbtn cbtn-raise"  id="btn-raise"  onclick="raiseBid()"   disabled>+ Raise<br>₹10K</button>
+        <button class="cbtn cbtn-sold"   id="btn-sold"   onclick="markSold()"   disabled>SOLD</button>
+        <button class="cbtn cbtn-unsold" id="btn-unsold" onclick="markUnsold()" disabled>UNSOLD</button>
+        <button class="cbtn cbtn-next"   id="btn-next"   onclick="nextPlayer()" disabled>NEXT ▶</button>
+      </div>
+    </div>
+
+    <div class="sb">
+      <div class="sb-hdr">Players <span id="sb-count">0</span></div>
+      <div class="sb-filters">
+        <button class="fb on" onclick="setFilter('all',this)">All</button>
+        <button class="fb"    onclick="setFilter('Batsman',this)">Batsman</button>
+        <button class="fb"    onclick="setFilter('Bowler',this)">Bowler</button>
+        <button class="fb"    onclick="setFilter('All-Rounder',this)">All-Rounder</button>
+        <button class="fb"    onclick="setFilter('Wicket Keeper',this)">WK</button>
+      </div>
+      <div class="plist" id="plist"></div>
+      <div class="csvbar">
+        <input id="csv-url" type="text" placeholder="Paste Google Sheets CSV URL…">
+        <button class="lbtn lbtn-load" onclick="loadCSV()">Load</button>
+        <button class="lbtn lbtn-demo" onclick="loadDemo()">Demo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var players = [];
+  var cur  = -1;
+  var filt = 'all';
+  var STEP = 10000;
+
+  var demo = [
+    { name:'Rahul Sharma', role:'Batsman',      batting:'Right Hand', bowling:'N/A',            city:'Mumbai',    state:'Maharashtra', basePrice:50000, photo:'' },
+    { name:'Arjun Patel',  role:'Bowler',        batting:'Left Hand',  bowling:'Left Arm Fast',  city:'Ahmedabad', state:'Gujarat',     basePrice:40000, photo:'' },
+    { name:'Kiran Reddy',  role:'All-Rounder',   batting:'Right Hand', bowling:'Right Arm Spin', city:'Hyderabad', state:'Telangana',   basePrice:75000, photo:'' },
+    { name:'Suresh Kumar', role:'Wicket Keeper', batting:'Right Hand', bowling:'N/A',            city:'Chennai',   state:'Tamil Nadu',  basePrice:60000, photo:'' },
+    { name:'Vikram Singh', role:'Bowler',        batting:'Right Hand', bowling:'Right Arm Fast', city:'Delhi',     state:'Delhi',       basePrice:45000, photo:'' },
+    { name:'Manish Rao',   role:'Batsman',       batting:'Left Hand',  bowling:'N/A',            city:'Bangalore', state:'Karnataka',   basePrice:55000, photo:'' },
+  ];
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function ini(name) {
+    return name.split(' ').map(function(w){ return w[0]; }).join('').substring(0,2).toUpperCase();
+  }
+  function fmt(n) { return '₹' + Number(n).toLocaleString('en-IN'); }
+  function roleClass(r) {
+    if (r === 'Batsman')       return 'bdg-bat';
+    if (r === 'Bowler')        return 'bdg-bowl';
+    if (r === 'All-Rounder')   return 'bdg-all';
+    if (r === 'Wicket Keeper') return 'bdg-wk';
+    return 'bdg-hand';
+  }
+
+  // ── PHOTO: Extract Google Drive File ID ───────────────────────
+  // Google Form saves uploads as Drive links — we must convert them.
+  // Supported URL formats:
+  //   https://drive.google.com/file/d/FILE_ID/view
+  //   https://drive.google.com/open?id=FILE_ID
+  //   https://drive.google.com/uc?id=FILE_ID
+  function extractDriveId(url) {
+    if (!url || !url.trim()) return '';
+    var patterns = [
+      /\/file\/d\/([a-zA-Z0-9_-]{10,})/,
+      /[?&]id=([a-zA-Z0-9_-]{10,})/,
+      /\/open\?id=([a-zA-Z0-9_-]{10,})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var m = url.match(patterns[i]);
+      if (m) return m[1];
+    }
+    return '';
+  }
+
+  // ── PHOTO: Set image with multiple fallback URLs ───────────────
+  // Google Drive blocks <img src="drive.google.com/..."> directly.
+  // We try 3 proxy/thumbnail URLs in sequence:
+  //   1. /thumbnail?sz=w400  — most reliable, works even without login
+  //   2. /uc?export=view     — works when file is publicly shared
+  //   3. lh3.googleusercontent.com — Google's CDN, fastest when available
+  function setPhoto(el, rawUrl, name, isCard) {
+    var initials = ini(name);
+    el.innerHTML = initials; // show initials immediately
+
+    if (!rawUrl || !rawUrl.trim()) return;
+
+    var id = extractDriveId(rawUrl);
+
+    // Build list of URLs to try
+    var urls = [];
+    if (id) {
+      urls = [
+        'https://drive.google.com/thumbnail?id=' + id + '&sz=w400',
+        'https://drive.google.com/uc?export=view&id=' + id,
+        'https://lh3.googleusercontent.com/d/' + id + '=w400'
+      ];
+    } else {
+      urls = [rawUrl]; // not a Drive URL, try directly
+    }
+
+    var imgStyle = isCard
+      ? 'width:100%;height:100%;object-fit:cover;object-position:top;display:block;'
+      : 'width:100%;height:100%;object-fit:cover;object-position:top;';
+
+    function tryUrl(index) {
+      if (index >= urls.length) {
+        el.innerHTML = initials; // all URLs failed → show initials
+        return;
+      }
+      var img = document.createElement('img');
+      img.style.cssText = imgStyle;
+      img.onload = function() {
+        el.innerHTML = '';
+        el.style.fontSize = '0';
+        el.appendChild(img);
+      };
+      img.onerror = function() {
+        tryUrl(index + 1); // try next URL
+      };
+      img.src = urls[index];
+    }
+
+    tryUrl(0);
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────
+  function updateStats() {
+    var sold = 0, unsold = 0, avail = 0;
+    players.forEach(function(p) {
+      if      (p.status === 'sold')   sold++;
+      else if (p.status === 'unsold') unsold++;
+      else                            avail++;
+    });
+    document.getElementById('s-total').textContent  = players.length;
+    document.getElementById('s-sold').textContent   = sold;
+    document.getElementById('s-unsold').textContent = unsold;
+    document.getElementById('s-rem').textContent    = avail;
+    document.getElementById('sb-count').textContent = players.length;
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────────
+  function renderList() {
+    var list  = document.getElementById('plist');
+    var shown = filt === 'all' ? players : players.filter(function(p){ return p.role === filt; });
+
+    list.innerHTML = shown.map(function(p) {
+      var ri    = players.indexOf(p);
+      var isCur = ri === cur;
+      var sc    = isCur ? 'ps-cur' : (p.status==='sold' ? 'ps-sold' : p.status==='unsold' ? 'ps-unsold' : 'ps-av');
+      var st    = isCur ? 'On Auction' : (p.status==='sold' ? 'Sold' : p.status==='unsold' ? 'Unsold' : 'Available');
+      return '<div class="prow' + (isCur ? ' cur' : '') + '" onclick="showPlayer(' + ri + ')">'
+        + '<div class="pav" id="sav-' + ri + '">' + ini(p.name) + '</div>'
+        + '<div class="pinfo"><div class="pinfo-name">' + p.name + '</div>'
+        + '<div class="pinfo-sub">' + p.role + ' · ' + p.city + '</div></div>'
+        + '<div class="pstatus ' + sc + '">' + st + '</div>'
+        + '</div>';
+    }).join('');
+
+    // Load sidebar photos after DOM is ready
+    shown.forEach(function(p) {
+      var ri = players.indexOf(p);
+      var el = document.getElementById('sav-' + ri);
+      if (el && p.photo) setPhoto(el, p.photo, p.name, false);
+    });
+  }
+
+  // ── Show player on stage ──────────────────────────────────────
+  function showPlayer(idx) {
+    if (idx < 0 || idx >= players.length) return;
+    cur = idx;
+    var p  = players[idx];
+    var av = document.getElementById('main-av');
+
+    // Reset font size and show initials first, then load photo
+    av.style.fontSize = '64px';
+    av.innerHTML = ini(p.name);
+    if (p.photo) setPhoto(av, p.photo, p.name, true);
+
+    document.getElementById('main-name').textContent = p.name;
+    document.getElementById('main-from').innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="#7a8aaa">'
+      + '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z'
+      + 'm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>'
+      + '</svg> ' + p.city + ', ' + p.state;
+
+    document.getElementById('main-badges').innerHTML =
+        '<span class="bdg ' + roleClass(p.role) + '">' + p.role + '</span>'
+      + '<span class="bdg bdg-hand">Bat: ' + p.batting + '</span>'
+      + (p.bowling && p.bowling !== 'N/A' ? '<span class="bdg bdg-hand">Bowl: ' + p.bowling + '</span>' : '');
+
+    document.getElementById('main-base').textContent = fmt(p.basePrice);
+    document.getElementById('main-bid').textContent  = fmt(p.currentBid);
+    document.getElementById('overlay').classList.remove('show');
+
+    var avail = p.status === 'available';
+    document.getElementById('btn-raise').disabled  = !avail;
+    document.getElementById('btn-sold').disabled   = !avail;
+    document.getElementById('btn-unsold').disabled = !avail;
+    document.getElementById('btn-next').disabled   = false;
+
+    renderList();
+  }
+
+  // ── Controls ──────────────────────────────────────────────────
+  function raiseBid() {
+    if (cur < 0) return;
+    players[cur].currentBid = (parseInt(players[cur].currentBid) || 0) + STEP;
+    document.getElementById('main-bid').textContent = fmt(players[cur].currentBid);
+  }
+
+  function markSold() {
+    if (cur < 0) return;
+    players[cur].status = 'sold';
+    var ov = document.getElementById('overlay');
+    document.getElementById('ov-txt').textContent   = 'SOLD!';
+    document.getElementById('ov-txt').style.color   = '#4caf50';
+    document.getElementById('ov-price').textContent = fmt(players[cur].currentBid);
+    ov.classList.add('show');
+    document.getElementById('btn-raise').disabled  = true;
+    document.getElementById('btn-sold').disabled   = true;
+    document.getElementById('btn-unsold').disabled = true;
+    updateStats(); renderList();
+    setTimeout(function(){ ov.classList.remove('show'); }, 2000);
+  }
+
+  function markUnsold() {
+    if (cur < 0) return;
+    players[cur].status = 'unsold';
+    var ov = document.getElementById('overlay');
+    document.getElementById('ov-txt').textContent   = 'UNSOLD';
+    document.getElementById('ov-txt').style.color   = '#ef5350';
+    document.getElementById('ov-price').textContent = '';
+    ov.classList.add('show');
+    document.getElementById('btn-raise').disabled  = true;
+    document.getElementById('btn-sold').disabled   = true;
+    document.getElementById('btn-unsold').disabled = true;
+    updateStats(); renderList();
+    setTimeout(function(){ ov.classList.remove('show'); }, 1500);
+  }
+
+  function nextPlayer() {
+    var next = players.findIndex(function(p, i){ return i > cur && p.status === 'available'; });
+    if (next === -1) next = players.findIndex(function(p){ return p.status === 'available'; });
+    if (next !== -1) showPlayer(next);
+  }
+
+  function setFilter(role, btn) {
+    filt = role;
+    document.querySelectorAll('.fb').forEach(function(b){ b.classList.remove('on'); });
+    btn.classList.add('on');
+    renderList();
+  }
+
+  function loadDemo() {
+    players = demo.map(function(p){ return Object.assign({}, p, { status:'available', currentBid:p.basePrice }); });
+    updateStats();
+    showPlayer(0);
+  }
+
+  // ── CSV Parser (handles commas inside quoted fields) ──────────
+  function parseCSVRow(row) {
+    var result = [], cur = '', inQ = false;
+    for (var i = 0; i < row.length; i++) {
+      var ch = row[i];
+      if (ch === '"')              inQ = !inQ;
+      else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+      else                          cur += ch;
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  // ── Load from Google Sheets CSV ───────────────────────────────
+  function loadCSV() {
+    var url = document.getElementById('csv-url').value.trim();
+    if (!url) { alert('Please paste a Google Sheets CSV URL.'); return; }
+
+    fetch(url)
+      .then(function(r) { return r.text(); })
+      .then(function(txt) {
+        var rows = txt.trim().split('\n').map(function(l){ return parseCSVRow(l); });
+        var hdrs = rows[0].map(function(h){ return h.toLowerCase().trim(); });
+
+        function col(row, key) {
+          var i = hdrs.findIndex(function(h){ return h.includes(key); });
+          return i >= 0 ? (row[i] || '').trim() : '';
+        }
+
+        var loaded = rows.slice(1)
+          .filter(function(r){ return r.length > 1 && r[0]; })
+          .map(function(row) {
+
+            // Parse Skills field
+            // e.g. "Batsman, Right Hand, Left Arm Spin"
+            var rawSkills  = col(row, 'skills') || col(row, 'skill') || '';
+            var rawAddress = col(row, 'address') || '';
+            var sl = rawSkills.toLowerCase();
+
+            // Role
+            var role = 'Batsman';
+            if      (sl.includes('all-rounder') || sl.includes('all rounder')) role = 'All-Rounder';
+            else if (sl.includes('wicket') || sl.includes('keeper'))           role = 'Wicket Keeper';
+            else if (sl.includes('bowler'))                                    role = 'Bowler';
+            else if (sl.includes('batsman'))                                   role = 'Batsman';
+
+            // Batting hand
+            var batting = 'Right Hand';
+            if      (sl.includes('left hand bat')) batting = 'Left Hand';
+            else if (sl.includes('left hand'))     batting = 'Left Hand';
+            else if (sl.includes('right hand'))    batting = 'Right Hand';
+
+            // Bowling style
+            var bowling = 'N/A';
+            if      (sl.includes('left arm fast'))  bowling = 'Left Arm Fast';
+            else if (sl.includes('right arm fast')) bowling = 'Right Arm Fast';
+            else if (sl.includes('left arm spin'))  bowling = 'Left Arm Spin';
+            else if (sl.includes('right arm spin')) bowling = 'Right Arm Spin';
+            else if (sl.includes('left arm'))       bowling = 'Left Arm Fast';
+            else if (sl.includes('right arm'))      bowling = 'Right Arm Fast';
+
+            // City & State from Address
+            var addr  = rawAddress.split(',').map(function(a){ return a.trim(); });
+            var city  = addr[0] || '—';
+            var state = addr[1] || '—';
+
+            // Photo — raw Drive URL, setPhoto() handles conversion
+            var rawPhoto = col(row, 'player photo') || col(row, 'photo') || '';
+
+            return {
+              name:       col(row, 'name') || 'Unknown',
+              photo:      rawPhoto,
+              role:       role,
+              batting:    batting,
+              bowling:    bowling,
+              city:       city,
+              state:      state,
+              basePrice:  50000,
+              status:     'available',
+              currentBid: 50000
+            };
+          });
+
+        if (!loaded.length) {
+          alert('No players found!\n\nMake sure your Google Sheet has columns:\nPlayer photo, Name, Skills, Address');
+          return;
+        }
+
+        players = loaded;
+        updateStats();
+        showPlayer(0);
+      })
+      .catch(function(err) {
+        console.error(err);
+        alert('Could not load CSV.\n\n1. Open your Google Sheet\n2. File → Share → Publish to web\n3. Select sheet tab → CSV\n4. Click Publish → copy URL\n5. Paste here and click Load');
+      });
+  }
+
+  // ── Init ──────────────────────────────────────────────────────
+  loadDemo();
+</script>
+
+</body>
+</html>
