@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
+import Login from "./Login";
+import { currentUser, logout } from "./auth";
 
 /* ═══════════════════════════════════════════════════════════════════
    TYPES
@@ -268,17 +270,12 @@ function PhotoAvatar({ photo, name, card, size }: { photo:string; name:string; c
    SETUP WIZARD
 ═══════════════════════════════════════════════════════════════════ */
 
-async function logout() {
-  try { await fetch("/api/logout", { method:"POST" }); } catch { /* still go to login */ }
-  location.href = "/login.html";
-}
-
 function UserBadge({ user }: { user: string|null }) {
   if (!user) return null;
   return (
     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
       <span style={{ fontSize:13, color:"#6a80aa", whiteSpace:"nowrap" }}>👤 {user}</span>
-      <button className="cbtn" onClick={logout} title="Logout"
+      <button className="cbtn" onClick={() => { logout(); location.reload(); }} title="Logout"
         style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }}>
         Logout
       </button>
@@ -1567,14 +1564,7 @@ export default function App() {
   const [config,  setConfig]  = useState<AuctionConfig|null>(() => rdCfg());
   const [players, setPlayers] = useState<Player[]>([]);
   const [showSetup, setShowSetup] = useState(false);
-  const [user, setUser] = useState<string|null>(null);
-
-  useEffect(() => {
-    fetch("/api/me")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setUser(d?.user ?? null))
-      .catch(() => {});
-  }, []);
+  const [user, setUser] = useState<string|null>(() => currentUser());
 
   // Auto-load players on startup if config exists but no saved auction state
   useEffect(() => {
@@ -1592,6 +1582,7 @@ export default function App() {
     setConfig(cfg); setPlayers(ps); setShowSetup(false);
   };
 
+  if (!user) return <Login onLogin={setUser} />;
   if (!config || showSetup) {
     return <SetupWizard existingConfig={config} onLaunch={handleLaunch} user={user} />;
   }
