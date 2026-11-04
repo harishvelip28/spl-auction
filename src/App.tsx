@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { currentUser, logout } from "./auth";
 
@@ -759,24 +761,107 @@ function SetupWizard({ existingConfig, onLaunch, user }: {
    TEAM ROSTER MODAL
 ═══════════════════════════════════════════════════════════════════ */
 
-function buildTeamText(team: Team, totalPurse: number) {
+const escHtml = (v: string|number|undefined|null) =>
+  String(v ?? "—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/** HTML section for one team, using inline styles Word understands. */
+function buildTeamHtml(team: Team, totalPurse: number) {
   const spent = totalPurse - team.purse;
   const avg = team.players.length ? Math.round(spent / team.players.length) : 0;
-  const esc = (v: string|number) => String(v??"—").replace(/\|/g,"/").replace(/\n/g," ");
+  const th = `style="border:1px solid #444;background:#1a2d50;color:#ffffff;padding:6px 8px;font-weight:bold;text-align:center;"`;
+  const td = `style="border:1px solid #444;padding:6px 8px;text-align:center;"`;
+  const tdL = `style="border:1px solid #444;padding:6px 8px;text-align:left;"`;
   const rows = team.players.length
-    ? team.players.map(pl => `| ${esc(`${pl.name}${pl.availabilityUncertain?" (May/May Not Play)":""}${pl.manuallyAdded?" (Manual Entry)":""}`)} | ${esc(pl.mobile||"—")} | ${esc(fmt(pl.soldPrice??pl.currentBid))} |`)
-    : ["| No players yet | — | — |"];
-  return [
-    `SPL Auction - ${team.name}`, "",
-    "| Metric | Value |","| --- | --- |",
-    `| Players | ${team.players.length} |`,
-    `| Purse spent | ${fmt(spent)} |`,
-    `| Purse left | ${fmt(team.purse)} |`,
-    `| Avg bid | ${team.players.length ? fmt(avg) : "—"} |`, "",
-    "| Name | Phone | Bid Price |","| --- | --- | --- |",
-    ...rows,
-  ].join("\n");
+    ? team.players.map((pl, i) => {
+        const tags = [pl.availabilityUncertain ? "May/May Not Play" : "", pl.manuallyAdded ? "Manual Entry" : ""].filter(Boolean).join(", ");
+        const loc = `${pl.city || ""}${pl.state && pl.state !== "—" ? `, ${pl.state}` : ""}` || "—";
+        return `<tr>
+          <td ${td}>${i + 1}</td>
+          <td ${tdL}><b>${escHtml(pl.name)}</b>${tags ? ` <i style="color:#a05a00;">(${escHtml(tags)})</i>` : ""}</td>
+          <td ${td}>${escHtml(pl.role)}</td>
+          <td ${td}>${escHtml(loc)}</td>
+          <td ${td}>${escHtml(pl.mobile || "—")}</td>
+          <td ${td}><b>${escHtml(fmt(pl.soldPrice ?? pl.currentBid))}</b></td>
+        </tr>`;
+      }).join("")
+    : `<tr><td ${td} colspan="6">No players bought yet</td></tr>`;
+  return `
+    <h2 style="color:${escHtml(team.color)};font-family:Calibri,Arial,sans-serif;margin:0 0 8px;">${escHtml(team.name)}</h2>
+    <table style="border-collapse:collapse;margin-bottom:12px;font-family:Calibri,Arial,sans-serif;font-size:11pt;">
+      <tr><th ${th}>Players</th><th ${th}>Purse Spent</th><th ${th}>Purse Left</th><th ${th}>Avg Bid</th></tr>
+      <tr><td ${td}>${team.players.length}</td><td ${td}>${escHtml(fmt(spent))}</td><td ${td}>${escHtml(fmt(team.purse))}</td><td ${td}>${team.players.length ? escHtml(fmt(avg)) : "—"}</td></tr>
+    </table>
+    <table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif;font-size:11pt;">
+      <tr><th ${th}>#</th><th ${th}>Player</th><th ${th}>Role</th><th ${th}>City / State</th><th ${th}>Mobile</th><th ${th}>Bid Price</th></tr>
+      ${rows}
+    </table>`;
 }
+
+/** Word-compatible .doc (HTML with Office namespaces) containing one or more teams. */
+function buildTeamsDoc(title: string, teamList: Team[], totalPurse: number): Blob {
+  const sections = teamList.map((t, i) =>
+    `${i > 0 ? `<br style="page-break-before:always;mso-break-type:page-break;" clear="all">` : ""}${buildTeamHtml(t, totalPurse)}`
+  ).join("");
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${escHtml(title)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>@page { size: A4; margin: 1.5cm; } body { font-family: Calibri, Arial, sans-serif; }</style>
+</head><body>
+<h1 style="font-family:Calibri,Arial,sans-serif;color:#1a2d50;margin:0 0 4px;">${escHtml(title)}</h1>
+<p style="color:#666;margin:0 0 14px;">Generated ${escHtml(new Date().toLocaleString("en-IN"))}</p>
+${sections}
+</body></html>`;
+  return new Blob(["﻿", html], { type: "application/msword" });
+}
+
+/** PDF with summary + players table per team (one team per page). Uses "Rs." since built-in PDF fonts lack the ₹ glyph. */
+function buildTeamsPdf(title: string, teamList: Team[], totalPurse: number): Blob {
+  const money = (n: number) => "Rs. " + Number(n).toLocaleString("en-IN");
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const marginX = 40;
+  const lastY = () => (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 0;
+  const generated = `Generated ${new Date().toLocaleString("en-IN")}`;
+
+  teamList.forEach((team, idx) => {
+    if (idx > 0) doc.addPage();
+    let y = 48;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor("#1a2d50");
+    doc.text(title, marginX, y);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor("#666666");
+    doc.text(generated, marginX, y += 14);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(team.color || "#1a2d50");
+    doc.text(team.name, marginX, y += 28);
+
+    const spent = totalPurse - team.purse;
+    const avg = team.players.length ? Math.round(spent / team.players.length) : 0;
+    const head = { fillColor: "#1a2d50", textColor: "#ffffff", fontStyle: "bold" as const, halign: "center" as const };
+    autoTable(doc, {
+      startY: y + 10, margin: { left: marginX, right: marginX }, theme: "grid",
+      headStyles: head, styles: { halign: "center", fontSize: 10 },
+      head: [["Players", "Purse Spent", "Purse Left", "Avg Bid"]],
+      body: [[String(team.players.length), money(spent), money(team.purse), team.players.length ? money(avg) : "-"]],
+    });
+
+    const body = team.players.length
+      ? team.players.map((pl, i) => {
+          const tags = [pl.availabilityUncertain ? "May/May Not Play" : "", pl.manuallyAdded ? "Manual Entry" : ""].filter(Boolean).join(", ");
+          const loc = `${pl.city || ""}${pl.state && pl.state !== "—" ? `, ${pl.state}` : ""}` || "-";
+          return [String(i + 1), tags ? `${pl.name}\n(${tags})` : pl.name, pl.role || "-", loc, pl.mobile || "-", money(pl.soldPrice ?? pl.currentBid)];
+        })
+      : [[{ content: "No players bought yet", colSpan: 6 }]];
+    autoTable(doc, {
+      startY: lastY() + 14, margin: { left: marginX, right: marginX }, theme: "grid",
+      headStyles: head, styles: { halign: "center", valign: "middle", fontSize: 10, cellPadding: 5 },
+      alternateRowStyles: { fillColor: "#f2f5fa" },
+      columnStyles: { 0: { cellWidth: 26 }, 1: { halign: "left", fontStyle: "bold" }, 5: { fontStyle: "bold" } },
+      head: [["#", "Player", "Role", "City / State", "Mobile", "Bid Price"]],
+      body,
+    });
+  });
+  return doc.output("blob");
+}
+
+const safeFileName =(s: string) => s.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "team";
 
 function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: AuctionConfig; onClose:()=>void }) {
   const [tab, setTab] = useState(0);
@@ -785,18 +870,37 @@ function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: Auction
   const { totalPurse, minPlayers } = config.rules;
   const spent = totalPurse - team.purse;
 
-  const copyText = async (text: string, label: string) => {
-    try { await navigator.clipboard.writeText(text); } catch {
-      const ta = document.createElement("textarea"); ta.value=text; ta.style.cssText="position:absolute;left:-9999px;top:-9999px;opacity:0;";
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      try { document.execCommand("copy"); } catch {} // legacy fallback, clipboard API unavailable
-      document.body.removeChild(ta);
-    }
-    alert(`${label} copied.`);
+  const makeDoc = (list: Team[], label: string) => {
+    const title = `SPL Auction - ${label}`;
+    const blob = buildTeamsDoc(title, list, totalPurse);
+    const fileName = `SPL_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.doc`;
+    return { title, blob, fileName };
   };
-  const sendText = async (title: string, text: string) => {
-    if (navigator.share) { try { await navigator.share({ title, text }); return; } catch {} }
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  // "Copy" → download the Word document.
+  const downloadDoc = (list: Team[], label: string) => {
+    const { blob, fileName } = makeDoc(list, label);
+    downloadBlob(blob, fileName);
+  };
+  // "Send" → share a PDF as a file (WhatsApp appears in the share sheet on phones).
+  const sendDoc = async (list: Team[], label: string) => {
+    const title = `SPL Auction - ${label}`;
+    const blob = buildTeamsPdf(title, list, totalPurse);
+    const fileName = `SPL_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const file = new File([blob], fileName, { type: "application/pdf" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title }); return; }
+      catch (e) { if ((e as Error).name === "AbortError") return; }
+    }
+    // Desktop browsers can't attach files to WhatsApp: download it and open WhatsApp to attach manually.
+    downloadBlob(blob, fileName);
+    alert(`${fileName} downloaded.\n\nWhatsApp will open now — attach the downloaded file in the chat.`);
+    window.open("https://web.whatsapp.com/", "_blank", "noopener,noreferrer");
   };
   const downloadImg = async () => {
     if (!tableRef.current) return;
@@ -813,8 +917,6 @@ function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: Auction
     } catch { alert("Failed to download."); }
   };
 
-  const allText = teams.map(t => buildTeamText(t, totalPurse)).join("\n\n------------------------------\n\n");
-  const teamText = buildTeamText(team, totalPurse);
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.88)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
@@ -855,10 +957,10 @@ function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: Auction
         </div>
         <div style={{ padding:"10px 22px", borderBottom:"1px solid #1a2d50", background:"#07121f", display:"flex", gap:8, flexWrap:"wrap" }}>
           {[
-            { label:"Copy Team", onClick:()=>copyText(teamText,team.name), bg:"#111f3a", color:"#90a4d4" },
-            { label:"Send Team", onClick:()=>sendText(team.name,teamText), bg:"#0d2b0d", color:"#4caf50" },
-            { label:"Copy All",  onClick:()=>copyText(allText,"All teams"), bg:"#0a1830", color:"#90a4d4" },
-            { label:"Send All",  onClick:()=>sendText("SPL Teams",allText), bg:"#0d2b0d", color:"#4caf50" },
+            { label:"Copy Team", onClick:()=>downloadDoc([team], team.name), bg:"#111f3a", color:"#90a4d4" },
+            { label:"Send Team", onClick:()=>sendDoc([team], team.name),     bg:"#0d2b0d", color:"#4caf50" },
+            { label:"Copy All",  onClick:()=>downloadDoc(teams, "All Teams"), bg:"#0a1830", color:"#90a4d4" },
+            { label:"Send All",  onClick:()=>sendDoc(teams, "All Teams"),     bg:"#0d2b0d", color:"#4caf50" },
           ].map(b => (
             <button key={b.label} onClick={b.onClick}
               style={{ padding:"7px 14px", border:"1px solid #1a2d50", borderRadius:7, fontSize:14, cursor:"pointer", fontWeight:700, background:b.bg, color:b.color }}>
