@@ -29,7 +29,7 @@ interface AuctionConfig {
   league: LeagueConfig; rules: RulesConfig; teams: TeamDef[];
   csv: { url: string; columnMap: Partial<ColumnMap>; };
 }
-interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; }
+interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; activity?: ActivityEntry[]; }
 
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -234,15 +234,59 @@ function rdState(cfg: AuctionConfig, manual: Player[]): AuctionState|null {
         ? st.teams.map(t=>({...t,purse:t.purse??cfg.rules.totalPurse,players:(t.players??[]).map((p,i)=>normPlayer(p,i+1,mb))}))
         : cfg.teams.map(t=>({...t,purse:cfg.rules.totalPurse,players:[]})),
       cur: st.cur??0, selTeam: st.selTeam??0,
+      activity: Array.isArray(st.activity) ? st.activity : [],
     };
   } catch { return null; }
 }
-const wrState = (s: AuctionState) => { try { if(s.players.length) localStorage.setItem(STATE_KEY,JSON.stringify(s)); else localStorage.removeItem(STATE_KEY); } catch{} };
+/** Returns false when the save failed (usually browser storage is full), so the UI can warn. */
+const wrState = (s: AuctionState): boolean => { try { if(s.players.length) localStorage.setItem(STATE_KEY,JSON.stringify(s)); else localStorage.removeItem(STATE_KEY); return true; } catch { return false; } };
 const clrState = () => { try { localStorage.removeItem(STATE_KEY); } catch{} };
 function rdManual(mb: number): Player[] {
   try { const s=localStorage.getItem(MANUAL_KEY); return s?(JSON.parse(s) as Partial<Player>[]).map((p,i)=>normPlayer({...p,manuallyAdded:true},i+1,mb)):[];} catch{return[];}
 }
 const wrManual = (ps: Player[]) => { try { if(ps.length) localStorage.setItem(MANUAL_KEY,JSON.stringify(ps)); else localStorage.removeItem(MANUAL_KEY); } catch{} };
+
+/* Backup file: everything needed to resume the auction on any machine/browser. */
+const BACKUP_KIND = "spl-auction-backup";
+function downloadBackup(config: AuctionConfig, state: AuctionState, manual: Player[]) {
+  const data = { kind: BACKUP_KIND, version: 1, savedAt: new Date().toISOString(), config, state, manual };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${config.league.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-auction-backup-${stamp}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/** Writes a backup file into browser storage. Returns an error message, or null on success. */
+async function restoreBackup(file: File): Promise<string | null> {
+  let data: { kind?: string; config?: AuctionConfig; state?: AuctionState; manual?: Player[] };
+  try { data = JSON.parse(await file.text()); } catch { return "This file is not valid JSON."; }
+  if (data?.kind !== BACKUP_KIND || !data.config?.rules || !Array.isArray(data.state?.players)) return "This is not an auction backup file.";
+  try {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(data.config));
+    localStorage.setItem(STATE_KEY, JSON.stringify(data.state));
+    if (data.manual?.length) localStorage.setItem(MANUAL_KEY, JSON.stringify(data.manual)); else localStorage.removeItem(MANUAL_KEY);
+  } catch { return "Browser storage is full or blocked."; }
+  return null;
+}
+function RestoreButton({ style }: { style: React.CSSProperties }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    if (!window.confirm("📂 Restore auction from this backup?\n\nThis replaces the auction data currently in this browser.")) return;
+    const err = await restoreBackup(f);
+    if (err) alert(`Could not restore: ${err}`);
+    else window.location.reload();
+  };
+  return (
+    <>
+      <button className="cbtn" onClick={() => ref.current?.click()} style={style} title="Load an auction backup file">📂 Restore</button>
+      <input ref={ref} type="file" accept="application/json,.json" style={{ display:"none" }} onChange={onFile} />
+    </>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    PHOTO AVATAR
@@ -796,7 +840,10 @@ function SetupWizard({ existingConfig, onLaunch, user }: {
             <div style={{ fontSize:22, fontWeight:800, color:"#f0c040", letterSpacing:".5px" }}>Auction Setup</div>
             <div style={{ fontSize:14, color:"#4a6080", marginTop:3 }}>Configure your auction before going live</div>
           </div>
-          <UserBadge user={user} />
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <RestoreButton style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }} />
+            <UserBadge user={user} />
+          </div>
         </div>
         {/* Body */}
         <div style={{ padding:"28px 28px 20px" }}>
@@ -1209,7 +1256,13 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [showRoster,    setShowRoster]    = useState(false);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[] } | null>(null);
-  const [activity,      setActivity]      = useState<ActivityEntry[]>([]);
+  const [activity,      setActivity]      = useState<ActivityEntry[]>(() => initState?.activity ?? []);
+  const [saveFailed,    setSaveFailed]    = useState(false);
+
+  // Players fetched by the root after this screen mounted (fresh start, nothing saved yet)
+  useEffect(() => {
+    if (!players.length && initPlayers.length) setPlayers(initPlayers);
+  }, [initPlayers]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page: auction screen or full player list. Synced to the URL hash so browser Back works.
   const readView = (): "auction" | "players" => (window.location.hash === "#players" ? "players" : "auction");
@@ -1226,10 +1279,11 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
     window.scrollTo(0, 0);
   };
 
-  // Persist state
+  // Persist state after every change so a crash/restart resumes exactly here
   useEffect(() => {
-    wrState({ players, teams, cur, selTeam });
-  }, [players, teams, cur, selTeam]);
+    setSaveFailed(!wrState({ players, teams, cur, selTeam, activity }));
+  }, [players, teams, cur, selTeam, activity]);
+  const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity }, manualPlayers);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1341,7 +1395,7 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!window.confirm("🔄 Reset all bids and team assignments?\n\nThis cannot be undone.")) return;
     const rp = players.map(pl => ({ ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined }));
     const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:[] }));
-    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all");
+    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null);
   }
   function deletePlayer() {
     if (!p) return;
@@ -1471,10 +1525,25 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                   style={{ padding:"8px 14px", border:"1px solid #3a1010", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#1e0808", color:"#ff5f57" }}>
                   🔄
                 </button>
+                <button className="cbtn" onClick={backup} title="Download a backup file of the whole auction"
+                  style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }}>
+                  💾 Backup
+                </button>
+                <RestoreButton style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }} />
                 <UserBadge user={user} />
               </div>
             </div>
           </div>
+
+          {saveFailed && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap", padding:"10px 22px", background:"#2a0a0a", borderBottom:"1px solid #5a1010", color:"#ff8a80", fontSize:14, fontWeight:700 }}>
+              <span>⚠ Auto-save failed — browser storage is full. Progress will be lost on a crash or reload. Download a backup now.</span>
+              <button className="cbtn" onClick={backup}
+                style={{ padding:"6px 14px", border:"1px solid #ff5f57", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:800, background:"#ff5f57", color:"#1a0505" }}>
+                💾 Download Backup
+              </button>
+            </div>
+          )}
 
           {/* ── MAIN CONTENT ───────────────────────────────────────────────────── */}
           {view === "auction" && (
