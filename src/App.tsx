@@ -116,7 +116,10 @@ function parseRow(row: string): string[] {
 }
 function isUncertain(raw: string) {
   const v = raw.trim().toLowerCase();
-  return v ? ["yes","y","true","1","maybe","uncertain","tentative","may or may not","not sure"].some(f => v.includes(f)) : false;
+  if (!v) return false;
+  // Short tokens must match exactly (or lead the answer) — a substring check on "y" would flag "No, I'll play".
+  if (["yes","y","true","1"].includes(v) || /^yes\b/.test(v)) return true;
+  return ["maybe","uncertain","tentative","may or may not","may/may not","not sure"].some(f => v.includes(f));
 }
 function normPlayer(p: Partial<Player>, serial: number, minBase = 300): Player {
   const bp = Math.max(minBase, Number(p.basePrice) || minBase);
@@ -182,7 +185,7 @@ function parseCSVText(text: string, map: Partial<ColumnMap>, minBase: number): P
   };
   const get = (row: string[], key: keyof ColumnMap) => { const i=ci(map[key]); return i>=0?(row[i]||"").trim():""; };
   return rows.slice(1).filter(r => r.length > 1 && r[0]).map((row, i) => {
-    const sk = get(row,"skills").toLowerCase().replace(/\s+/g,"");
+    const sk = get(row,"skills").toLowerCase().replace(/[\s\-_]+/g,"");
     const addr = get(row,"address").split(",").map((a:string)=>a.trim());
     let role = "Batsman";
     if      (sk.includes("allrounder"))                      role = "All-Rounder";
@@ -247,7 +250,12 @@ const wrManual = (ps: Player[]) => { try { if(ps.length) localStorage.setItem(MA
 
 function PhotoAvatar({ photo, name, card, size }: { photo:string; name:string; card?:boolean; size?:number }) {
   const urls = driveUrls(photo);
-  const [idx, setIdx] = useState(0);
+  // Track which fallback URL we're on *per photo*: the auction card reuses this component across
+  // players, so without resetting, one player's failed photo would hide every later player's photo.
+  const [fb, setFb] = useState({ photo, idx: 0 });
+  if (fb.photo !== photo) setFb({ photo, idx: 0 });
+  const idx = fb.photo === photo ? fb.idx : 0;
+  const setIdx = (f: (i: number) => number) => setFb(s => ({ photo, idx: f(s.photo === photo ? s.idx : 0) }));
   const sz = size ?? (card ? undefined : 44);
   const ini = getInitials(name);
   const wrap: React.CSSProperties = card
@@ -536,6 +544,8 @@ function Step4Players({ cfg, onChange, onPlayers }: {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
+      <GoogleFormGuide defaultOpen={!cfg.csv.url} />
+
       {/* Source selector */}
       <div style={{ display:"flex", border:"1px solid #1a2d50", borderRadius:10, overflow:"hidden" }}>
         {([
@@ -639,6 +649,82 @@ function Step4Players({ cfg, onChange, onPlayers }: {
               <span>✓</span> {playerCount} players loaded successfully
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Guidance for building the player registration Google Form.
+   Question titles match autoMap() keywords so columns map automatically. */
+const FORM_FIELDS: { title: string; type: string; required: boolean; answers: string; note?: string }[] = [
+  { title: "Player Name",   type: "Short answer",         required: true,  answers: "e.g. Rohit Sharma" },
+  { title: "Mobile Number", type: "Short answer",         required: true,  answers: "e.g. 9876543210", note: "Turn on Response validation → Number." },
+  { title: "Player Photo",  type: "File upload",          required: false, answers: "1 image, max 10 MB", note: "Clear face photo. See the photo tip below." },
+  { title: "Skills",        type: "Checkboxes",           required: true,  answers: "Batsman · Bowler · All-Rounder · Wicket Keeper · Right Hand Bat · Left Hand Bat · Right Arm Fast · Right Arm Spin · Left Arm Fast · Left Arm Spin", note: "Players tick their role, batting hand and bowling style." },
+  { title: "City, State",   type: "Short answer",         required: false, answers: "e.g. Pune, Maharashtra", note: "Ask for a comma between city and state." },
+  { title: "Availability",  type: "Multiple choice",      required: false, answers: "Will play · May or may not play", note: "\"May or may not play\" shows the May/May Not badge." },
+];
+
+function GoogleFormGuide({ defaultOpen }: { defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const cell: React.CSSProperties = { padding:"8px 10px", borderBottom:"1px solid #111f3a", verticalAlign:"top", fontSize:13, color:"#8899bb", lineHeight:1.5 };
+  const h: React.CSSProperties = { ...cell, color:"#4a6080", fontWeight:700, fontSize:11, textTransform:"uppercase", letterSpacing:".5px", textAlign:"left", background:"#0a1528" };
+  const stepNum: React.CSSProperties = { flexShrink:0, width:22, height:22, borderRadius:"50%", background:"#1a2d50", color:"#f0c040", fontSize:12, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" };
+  return (
+    <div style={{ border:"1px solid #1a2d50", borderRadius:10, background:"#07101e", overflow:"hidden" }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", border:"none", background:"transparent", cursor:"pointer", color:"#90a4d4", fontSize:15, fontWeight:700, textAlign:"left" }}>
+        <span>📝 How to set up your Google Form</span>
+        <span style={{ color:"#4a6080", fontSize:13 }}>{open ? "Hide ▲" : "Show ▼"}</span>
+      </button>
+      {open && (
+        <div style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ fontSize:13, color:"#6a80aa", lineHeight:1.6 }}>
+            Create a registration form with these questions. Use the <b style={{ color:"#f0c040" }}>exact titles</b> shown so the columns are matched automatically below.
+          </div>
+
+          <div style={{ overflowX:"auto", border:"1px solid #111f3a", borderRadius:8 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:620 }}>
+              <thead>
+                <tr><th style={h}>Question title</th><th style={h}>Type</th><th style={h}>Answers / example</th><th style={h}>Notes</th></tr>
+              </thead>
+              <tbody>
+                {FORM_FIELDS.map(f => (
+                  <tr key={f.title}>
+                    <td style={{ ...cell, color:"#fff", fontWeight:700, whiteSpace:"nowrap" }}>
+                      {f.title}{f.required && <span style={{ color:"#f0c040" }}> *</span>}
+                    </td>
+                    <td style={{ ...cell, whiteSpace:"nowrap" }}>{f.type}</td>
+                    <td style={cell}>{f.answers}</td>
+                    <td style={cell}>{f.note ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize:12, color:"#4a6080", marginTop:-8 }}>
+            <span style={{ color:"#f0c040" }}>*</span> mark as Required in the form. <b style={{ color:"#6a80aa" }}>Base Price</b> isn't a form question — if some players need a higher base, add a "Base Price" column in the response Sheet yourself; everyone else gets the default from Step 3.
+          </div>
+
+          <div>
+            <div style={{ fontSize:12, color:"#4a6080", fontWeight:700, textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Then connect it</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {[
+                <>In the form, open <b style={{ color:"#90a4d4" }}>Responses → Link to Sheets</b> to create a response spreadsheet.</>,
+                <>In that Sheet: <b style={{ color:"#90a4d4" }}>File → Share → Publish to web</b>, pick the <b style={{ color:"#90a4d4" }}>Form Responses 1</b> tab and <b style={{ color:"#90a4d4" }}>Comma-separated values (.csv)</b>, then <b style={{ color:"#90a4d4" }}>Publish</b>.</>,
+                <>Copy the link, paste it below and press <b style={{ color:"#90a4d4" }}>Detect</b>. New registrations appear automatically.</>,
+              ].map((s, i) => (
+                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", fontSize:13, color:"#8899bb", lineHeight:1.6 }}>
+                  <span style={stepNum}>{i + 1}</span><span>{s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ fontSize:13, color:"#c9a24a", background:"#1a1400", border:"1px solid #3a2e00", borderRadius:8, padding:"10px 12px", lineHeight:1.6 }}>
+            📷 <b>Photo tip:</b> uploaded photos go into a Drive folder that's private by default, so they won't show in the auction. In Google Drive, find the form's upload folder → <b>Share</b> → General access: <b>Anyone with the link → Viewer</b>. Note that File upload questions require players to sign in to Google.
+          </div>
         </div>
       )}
     </div>
@@ -773,7 +859,7 @@ function buildTeamHtml(team: Team, totalPurse: number) {
   const tdL = `style="border:1px solid #444;padding:6px 8px;text-align:left;"`;
   const rows = team.players.length
     ? team.players.map((pl, i) => {
-        const tags = [pl.availabilityUncertain ? "May/May Not Play" : "", pl.manuallyAdded ? "Manual Entry" : ""].filter(Boolean).join(", ");
+        const tags = pl.manuallyAdded ? "Manual Entry" : "";
         const loc = `${pl.city || ""}${pl.state && pl.state !== "—" ? `, ${pl.state}` : ""}` || "—";
         return `<tr>
           <td ${td}>${i + 1}</td>
@@ -844,9 +930,8 @@ function buildTeamsPdf(title: string, teamList: Team[], totalPurse: number): Blo
 
     const body = team.players.length
       ? team.players.map((pl, i) => {
-          const tags = [pl.availabilityUncertain ? "May/May Not Play" : "", pl.manuallyAdded ? "Manual Entry" : ""].filter(Boolean).join(", ");
           const loc = `${pl.city || ""}${pl.state && pl.state !== "—" ? `, ${pl.state}` : ""}` || "-";
-          return [String(i + 1), tags ? `${pl.name}\n(${tags})` : pl.name, pl.role || "-", loc, pl.mobile || "-", money(pl.soldPrice ?? pl.currentBid)];
+          return [String(i + 1), pl.manuallyAdded ? `${pl.name}\n(Manual Entry)` : pl.name, pl.role || "-", loc, pl.mobile || "-", money(pl.soldPrice ?? pl.currentBid)];
         })
       : [[{ content: "No players bought yet", colSpan: 6 }]];
     autoTable(doc, {
@@ -920,7 +1005,7 @@ function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: Auction
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.88)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
-      <div style={{ background:"#07101e", border:"1px solid #1a2d50", borderRadius:16, width:"min(95vw,980px)", maxHeight:"92vh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <div style={{ background:"#07101e", border:"1px solid #1a2d50", borderRadius:16, width:"min(98vw,1400px)", maxHeight:"94vh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
         <div style={{ background:"#0a1528", padding:"16px 22px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:"1px solid #1a2d50" }}>
           <span style={{ fontSize:20, fontWeight:800, color:"#f0c040", letterSpacing:".5px" }}>Team Rosters</span>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"#4a6080", fontSize:24, cursor:"pointer" }}>✕</button>
@@ -1126,6 +1211,21 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[] } | null>(null);
   const [activity,      setActivity]      = useState<ActivityEntry[]>([]);
 
+  // Page: auction screen or full player list. Synced to the URL hash so browser Back works.
+  const readView = (): "auction" | "players" => (window.location.hash === "#players" ? "players" : "auction");
+  const [view, setView] = useState<"auction" | "players">(readView);
+  useEffect(() => {
+    const onHash = () => setView(readView());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const goTo = (v: "auction" | "players") => {
+    if (v === "players") window.location.hash = "players";
+    else history.pushState(null, "", window.location.pathname + window.location.search);
+    setView(v);
+    window.scrollTo(0, 0);
+  };
+
   // Persist state
   useEffect(() => {
     wrState({ players, teams, cur, selTeam });
@@ -1135,6 +1235,7 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      if (view !== "auction") return;
       if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
       if (e.key === "+" || e.key === "=") { e.preventDefault(); raiseBid(); }
@@ -1273,7 +1374,7 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
     const n = parseInt(search.trim(), 10);
     if (isNaN(n)) return;
     const idx = players.findIndex(x => x.serialNo === n);
-    if (idx !== -1) { setCur(idx); setOverlay(null); setSearch(""); }
+    if (idx !== -1) { setCur(idx); setOverlay(null); setSearch(""); goTo("auction"); }
     else alert(`No player #${n} found.`);
   }
 
@@ -1347,6 +1448,17 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                 </div>
               ))}
               <div style={{ display:"flex", gap:8, marginLeft:8 }}>
+                {view === "auction" ? (
+                  <button className="cbtn" onClick={()=>goTo("players")}
+                    style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
+                    👥 Players
+                  </button>
+                ) : (
+                  <button className="cbtn" onClick={()=>goTo("auction")}
+                    style={{ padding:"8px 16px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
+                    ← Auction
+                  </button>
+                )}
                 <button className="cbtn" onClick={()=>setShowRoster(true)}
                   style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
                   📋 Rosters
@@ -1365,6 +1477,7 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
           </div>
 
           {/* ── MAIN CONTENT ───────────────────────────────────────────────────── */}
+          {view === "auction" && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 380px", flex:1 }}>
 
             {/* LEFT: PLAYER CARD */}
@@ -1374,13 +1487,56 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
               {p ? (
                 <div style={{ background:"#07101e", border:"1px solid #1a2d50", borderRadius:16, overflow:"hidden", position:"relative", flex:1, display:"flex", flexDirection:"column" }}>
                   {/* Photo area — grows to fill spare card height */}
-                  <div style={{ flex:1, minHeight:360, position:"relative", overflow:"hidden" }}>
-                    <div style={{ position:"absolute", inset:0 }}>
-                      <PhotoAvatar photo={p.photo} name={p.name} card />
+                  <div style={{ flex:1, minHeight:360, position:"relative", overflow:"hidden", display:"flex" }}>
+                    {/* Photo — left */}
+                    <div style={{ flex:1, position:"relative", minWidth:0 }}>
+                      <div style={{ position:"absolute", inset:0 }}>
+                        <PhotoAvatar photo={p.photo} name={p.name} card />
+                      </div>
+                      {/* Serial badge — small, top-left corner only */}
+                      <div style={{ position:"absolute", top:12, left:12, background:"rgba(7,16,30,.75)", backdropFilter:"blur(6px)", border:"1px solid #2a3d6a", borderRadius:8, padding:"4px 10px", fontSize:12, fontWeight:700, color:"#90a4d4", letterSpacing:"1.5px" }}>
+                        #{p.serialNo}
+                      </div>
                     </div>
-                    {/* Serial badge — small, top-left corner only */}
-                    <div style={{ position:"absolute", top:12, left:12, background:"rgba(7,16,30,.75)", backdropFilter:"blur(6px)", border:"1px solid #2a3d6a", borderRadius:8, padding:"4px 10px", fontSize:12, fontWeight:700, color:"#90a4d4", letterSpacing:"1.5px" }}>
-                      #{p.serialNo}
+                    {/* Player details + prices — right of photo */}
+                    <div style={{ width:"clamp(240px, 40%, 360px)", flexShrink:0, borderLeft:"1px solid #1a2d50", background:"#060e1b",
+                      display:"flex", flexDirection:"column", justifyContent:"center", gap:22, padding:"20px 22px", overflowY:"auto" }}>
+                      <div>
+                        <div style={{ fontSize:28, fontWeight:900, color:"#fff", lineHeight:1.1, letterSpacing:".3px", marginBottom:10, wordBreak:"break-word" }}>
+                          {p.name}
+                        </div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...(ROLE_STYLE[p.role]??{ background:"#1a2d50", color:"#90a4d4", border:"1px solid #2a3d6a" }) }}>{p.role}</span>
+                          <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.batting}</span>
+                          {p.bowling !== "N/A" && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.bowling}</span>}
+                          {p.availabilityUncertain && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...UNCERTAIN_BADGE }}>May/May Not Play</span>}
+                          {p.manuallyAdded && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...MANUAL_BADGE }}>Manual Entry</span>}
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:12 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080" style={{ flexShrink:0 }}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            {p.city}{p.state && p.state!=="—" ? `, ${p.state}` : ""}
+                          </div>
+                          {p.mobile && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080" style={{ flexShrink:0 }}><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+                              {p.mobile}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ height:1, background:"#111f3a" }} />
+                      <div>
+                        <div style={{ fontSize:12, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px", marginBottom:6 }}>Base price</div>
+                        <div style={{ fontSize:26, fontWeight:700, color:"#6a80aa" }}>{fmt(p.basePrice)}</div>
+                      </div>
+                      <div style={{ height:1, background:"#111f3a" }} />
+                      <div>
+                        <div style={{ fontSize:12, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px", marginBottom:6 }}>Current Bid</div>
+                        <div key={bidKey} className="bidup" style={{ fontSize:"clamp(34px, 3.6vw, 52px)", fontWeight:900, color:"#f0c040", lineHeight:1, letterSpacing:-1, textShadow:"0 0 30px rgba(240,192,64,.4)", wordBreak:"break-word" }}>
+                          {fmt(p.currentBid)}
+                        </div>
+                      </div>
                     </div>
                     {/* SOLD / UNSOLD overlay */}
                     {overlay && (
@@ -1393,49 +1549,6 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                         {overlay.price && <div style={{ fontSize:22, fontWeight:700, color:"#fff", textAlign:"center", padding:"0 20px", textShadow:"0 2px 8px rgba(0,0,0,.8)" }}>{overlay.price}</div>}
                       </div>
                     )}
-                  </div>
-
-                  {/* Name + badges — below photo, fully readable */}
-                  <div style={{ padding:"14px 18px 10px", borderBottom:"1px solid #111f3a" }}>
-                    <div style={{ fontSize:30, fontWeight:900, color:"#fff", lineHeight:1.1, letterSpacing:".3px", marginBottom:10 }}>
-                      {p.name}
-                    </div>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...(ROLE_STYLE[p.role]??{ background:"#1a2d50", color:"#90a4d4", border:"1px solid #2a3d6a" }) }}>{p.role}</span>
-                      <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.batting}</span>
-                      {p.bowling !== "N/A" && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.bowling}</span>}
-                      {p.availabilityUncertain && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...UNCERTAIN_BADGE }}>May/May Not Play</span>}
-                      {p.manuallyAdded && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...MANUAL_BADGE }}>Manual Entry</span>}
-                    </div>
-                  </div>
-
-                  {/* Info section */}
-                  <div style={{ padding:"12px 18px 16px" }}>
-                    <div style={{ display:"flex", gap:16, flexWrap:"wrap", marginBottom:p.mobile?8:0 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                        {p.city}{p.state && p.state!=="—" ? `, ${p.state}` : ""}
-                      </div>
-                      {p.mobile && (
-                        <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
-                          {p.mobile}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ height:1, background:"#111f3a", margin:"12px 0" }} />
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
-                      <div>
-                        <div style={{ fontSize:12, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px", marginBottom:4 }}>Base price</div>
-                        <div style={{ fontSize:20, fontWeight:700, color:"#6a80aa" }}>{fmt(p.basePrice)}</div>
-                      </div>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontSize:12, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px", marginBottom:4 }}>Current Bid</div>
-                        <div key={bidKey} className="bidup" style={{ fontSize:52, fontWeight:900, color:"#f0c040", lineHeight:1, letterSpacing:-1, textShadow:"0 0 30px rgba(240,192,64,.4)" }}>
-                          {fmt(p.currentBid)}
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ) : (
@@ -1542,9 +1655,11 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
               </div>
             </div>
           </div>
+          )}
 
-          {/* ── PLAYER LIST PANEL ──────────────────────────────────────────────── */}
-          <div style={{ borderTop:"1px solid #1a2d50", background:"#06101e", display:"flex", flexDirection:"column" }}>
+          {/* ── PLAYERS PAGE ───────────────────────────────────────────────────── */}
+          {view === "players" && (
+          <div style={{ borderTop:"1px solid #1a2d50", background:"#06101e", display:"flex", flexDirection:"column", flex:1 }}>
             {/* Controls row */}
             <div style={{ padding:"12px 18px", borderBottom:"1px solid #111f3a", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
               <span style={{ fontSize:13, color:"#4a6080", fontWeight:700, whiteSpace:"nowrap" }}>
@@ -1608,7 +1723,10 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
             )}
 
             {/* Scrollable player rows */}
-            <div style={{ maxHeight:220, overflowY:"auto" }}>
+            <div>
+              {filtered.length === 0 && (
+                <div style={{ padding:40, textAlign:"center", color:"#4a6080", fontSize:16 }}>No players match this filter.</div>
+              )}
               {filtered.map(pl => {
                 const ri = players.indexOf(pl);
                 const isCur = ri === cur;
@@ -1617,7 +1735,7 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                 const stLabel = isCur?"On Auction":pl.status==="sold"?"Sold":pl.status==="unsold"?"Unsold":"Available";
                 const tc = pl.soldTo ? teams.find(t=>t.name===pl.soldTo)?.color : undefined;
                 return (
-                  <div key={ri} className="prow" onClick={()=>{ setCur(ri); setOverlay(null); }}
+                  <div key={ri} className="prow" onClick={()=>{ setCur(ri); setOverlay(null); goTo("auction"); }}
                     style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 18px", borderBottom:"1px solid #0a1528", cursor:"pointer",
                       borderLeft:`3px solid ${isCur?"#f0c040":"transparent"}`, background:"transparent", transition:"background .12s" }}>
                     <PhotoAvatar photo={pl.photo} name={pl.name} size={36} />
@@ -1641,11 +1759,12 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
               })}
             </div>
           </div>
+          )}
 
         </div>
       </div>
 
-      {showRoster    && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}
+      {showRoster   && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}
       {showAddPlayer && (
         <AddPlayerModal
           nextSerial={players.length > 0 ? Math.max(...players.map(p=>p.serialNo))+1 : 1}
