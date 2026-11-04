@@ -116,7 +116,10 @@ function parseRow(row: string): string[] {
 }
 function isUncertain(raw: string) {
   const v = raw.trim().toLowerCase();
-  return v ? ["yes","y","true","1","maybe","uncertain","tentative","may or may not","not sure"].some(f => v.includes(f)) : false;
+  if (!v) return false;
+  // Short tokens must match exactly (or lead the answer) — a substring check on "y" would flag "No, I'll play".
+  if (["yes","y","true","1"].includes(v) || /^yes\b/.test(v)) return true;
+  return ["maybe","uncertain","tentative","may or may not","may/may not","not sure"].some(f => v.includes(f));
 }
 function normPlayer(p: Partial<Player>, serial: number, minBase = 300): Player {
   const bp = Math.max(minBase, Number(p.basePrice) || minBase);
@@ -182,7 +185,7 @@ function parseCSVText(text: string, map: Partial<ColumnMap>, minBase: number): P
   };
   const get = (row: string[], key: keyof ColumnMap) => { const i=ci(map[key]); return i>=0?(row[i]||"").trim():""; };
   return rows.slice(1).filter(r => r.length > 1 && r[0]).map((row, i) => {
-    const sk = get(row,"skills").toLowerCase().replace(/\s+/g,"");
+    const sk = get(row,"skills").toLowerCase().replace(/[\s\-_]+/g,"");
     const addr = get(row,"address").split(",").map((a:string)=>a.trim());
     let role = "Batsman";
     if      (sk.includes("allrounder"))                      role = "All-Rounder";
@@ -247,7 +250,12 @@ const wrManual = (ps: Player[]) => { try { if(ps.length) localStorage.setItem(MA
 
 function PhotoAvatar({ photo, name, card, size }: { photo:string; name:string; card?:boolean; size?:number }) {
   const urls = driveUrls(photo);
-  const [idx, setIdx] = useState(0);
+  // Track which fallback URL we're on *per photo*: the auction card reuses this component across
+  // players, so without resetting, one player's failed photo would hide every later player's photo.
+  const [fb, setFb] = useState({ photo, idx: 0 });
+  if (fb.photo !== photo) setFb({ photo, idx: 0 });
+  const idx = fb.photo === photo ? fb.idx : 0;
+  const setIdx = (f: (i: number) => number) => setFb(s => ({ photo, idx: f(s.photo === photo ? s.idx : 0) }));
   const sz = size ?? (card ? undefined : 44);
   const ini = getInitials(name);
   const wrap: React.CSSProperties = card
@@ -536,6 +544,8 @@ function Step4Players({ cfg, onChange, onPlayers }: {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
+      <GoogleFormGuide defaultOpen={!cfg.csv.url} />
+
       {/* Source selector */}
       <div style={{ display:"flex", border:"1px solid #1a2d50", borderRadius:10, overflow:"hidden" }}>
         {([
@@ -639,6 +649,82 @@ function Step4Players({ cfg, onChange, onPlayers }: {
               <span>✓</span> {playerCount} players loaded successfully
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Guidance for building the player registration Google Form.
+   Question titles match autoMap() keywords so columns map automatically. */
+const FORM_FIELDS: { title: string; type: string; required: boolean; answers: string; note?: string }[] = [
+  { title: "Player Name",   type: "Short answer",         required: true,  answers: "e.g. Rohit Sharma" },
+  { title: "Mobile Number", type: "Short answer",         required: true,  answers: "e.g. 9876543210", note: "Turn on Response validation → Number." },
+  { title: "Player Photo",  type: "File upload",          required: false, answers: "1 image, max 10 MB", note: "Clear face photo. See the photo tip below." },
+  { title: "Skills",        type: "Checkboxes",           required: true,  answers: "Batsman · Bowler · All-Rounder · Wicket Keeper · Right Hand Bat · Left Hand Bat · Right Arm Fast · Right Arm Spin · Left Arm Fast · Left Arm Spin", note: "Players tick their role, batting hand and bowling style." },
+  { title: "City, State",   type: "Short answer",         required: false, answers: "e.g. Pune, Maharashtra", note: "Ask for a comma between city and state." },
+  { title: "Availability",  type: "Multiple choice",      required: false, answers: "Will play · May or may not play", note: "\"May or may not play\" shows the May/May Not badge." },
+];
+
+function GoogleFormGuide({ defaultOpen }: { defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const cell: React.CSSProperties = { padding:"8px 10px", borderBottom:"1px solid #111f3a", verticalAlign:"top", fontSize:13, color:"#8899bb", lineHeight:1.5 };
+  const h: React.CSSProperties = { ...cell, color:"#4a6080", fontWeight:700, fontSize:11, textTransform:"uppercase", letterSpacing:".5px", textAlign:"left", background:"#0a1528" };
+  const stepNum: React.CSSProperties = { flexShrink:0, width:22, height:22, borderRadius:"50%", background:"#1a2d50", color:"#f0c040", fontSize:12, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" };
+  return (
+    <div style={{ border:"1px solid #1a2d50", borderRadius:10, background:"#07101e", overflow:"hidden" }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", border:"none", background:"transparent", cursor:"pointer", color:"#90a4d4", fontSize:15, fontWeight:700, textAlign:"left" }}>
+        <span>📝 How to set up your Google Form</span>
+        <span style={{ color:"#4a6080", fontSize:13 }}>{open ? "Hide ▲" : "Show ▼"}</span>
+      </button>
+      {open && (
+        <div style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ fontSize:13, color:"#6a80aa", lineHeight:1.6 }}>
+            Create a registration form with these questions. Use the <b style={{ color:"#f0c040" }}>exact titles</b> shown so the columns are matched automatically below.
+          </div>
+
+          <div style={{ overflowX:"auto", border:"1px solid #111f3a", borderRadius:8 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:620 }}>
+              <thead>
+                <tr><th style={h}>Question title</th><th style={h}>Type</th><th style={h}>Answers / example</th><th style={h}>Notes</th></tr>
+              </thead>
+              <tbody>
+                {FORM_FIELDS.map(f => (
+                  <tr key={f.title}>
+                    <td style={{ ...cell, color:"#fff", fontWeight:700, whiteSpace:"nowrap" }}>
+                      {f.title}{f.required && <span style={{ color:"#f0c040" }}> *</span>}
+                    </td>
+                    <td style={{ ...cell, whiteSpace:"nowrap" }}>{f.type}</td>
+                    <td style={cell}>{f.answers}</td>
+                    <td style={cell}>{f.note ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize:12, color:"#4a6080", marginTop:-8 }}>
+            <span style={{ color:"#f0c040" }}>*</span> mark as Required in the form. <b style={{ color:"#6a80aa" }}>Base Price</b> isn't a form question — if some players need a higher base, add a "Base Price" column in the response Sheet yourself; everyone else gets the default from Step 3.
+          </div>
+
+          <div>
+            <div style={{ fontSize:12, color:"#4a6080", fontWeight:700, textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>Then connect it</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {[
+                <>In the form, open <b style={{ color:"#90a4d4" }}>Responses → Link to Sheets</b> to create a response spreadsheet.</>,
+                <>In that Sheet: <b style={{ color:"#90a4d4" }}>File → Share → Publish to web</b>, pick the <b style={{ color:"#90a4d4" }}>Form Responses 1</b> tab and <b style={{ color:"#90a4d4" }}>Comma-separated values (.csv)</b>, then <b style={{ color:"#90a4d4" }}>Publish</b>.</>,
+                <>Copy the link, paste it below and press <b style={{ color:"#90a4d4" }}>Detect</b>. New registrations appear automatically.</>,
+              ].map((s, i) => (
+                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", fontSize:13, color:"#8899bb", lineHeight:1.6 }}>
+                  <span style={stepNum}>{i + 1}</span><span>{s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ fontSize:13, color:"#c9a24a", background:"#1a1400", border:"1px solid #3a2e00", borderRadius:8, padding:"10px 12px", lineHeight:1.6 }}>
+            📷 <b>Photo tip:</b> uploaded photos go into a Drive folder that's private by default, so they won't show in the auction. In Google Drive, find the form's upload folder → <b>Share</b> → General access: <b>Anyone with the link → Viewer</b>. Note that File upload questions require players to sign in to Google.
+          </div>
         </div>
       )}
     </div>
@@ -1412,9 +1498,34 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                         #{p.serialNo}
                       </div>
                     </div>
-                    {/* Prices — right of photo */}
-                    <div style={{ width:"clamp(200px, 34%, 300px)", flexShrink:0, borderLeft:"1px solid #1a2d50", background:"#060e1b",
-                      display:"flex", flexDirection:"column", justifyContent:"center", gap:28, padding:"20px 22px" }}>
+                    {/* Player details + prices — right of photo */}
+                    <div style={{ width:"clamp(240px, 40%, 360px)", flexShrink:0, borderLeft:"1px solid #1a2d50", background:"#060e1b",
+                      display:"flex", flexDirection:"column", justifyContent:"center", gap:22, padding:"20px 22px", overflowY:"auto" }}>
+                      <div>
+                        <div style={{ fontSize:28, fontWeight:900, color:"#fff", lineHeight:1.1, letterSpacing:".3px", marginBottom:10, wordBreak:"break-word" }}>
+                          {p.name}
+                        </div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...(ROLE_STYLE[p.role]??{ background:"#1a2d50", color:"#90a4d4", border:"1px solid #2a3d6a" }) }}>{p.role}</span>
+                          <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.batting}</span>
+                          {p.bowling !== "N/A" && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.bowling}</span>}
+                          {p.availabilityUncertain && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...UNCERTAIN_BADGE }}>May/May Not Play</span>}
+                          {p.manuallyAdded && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...MANUAL_BADGE }}>Manual Entry</span>}
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:12 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080" style={{ flexShrink:0 }}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            {p.city}{p.state && p.state!=="—" ? `, ${p.state}` : ""}
+                          </div>
+                          {p.mobile && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080" style={{ flexShrink:0 }}><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+                              {p.mobile}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ height:1, background:"#111f3a" }} />
                       <div>
                         <div style={{ fontSize:12, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px", marginBottom:6 }}>Base price</div>
                         <div style={{ fontSize:26, fontWeight:700, color:"#6a80aa" }}>{fmt(p.basePrice)}</div>
@@ -1438,36 +1549,6 @@ function AuctionApp({ config, initPlayers, onSetup, user }: {
                         {overlay.price && <div style={{ fontSize:22, fontWeight:700, color:"#fff", textAlign:"center", padding:"0 20px", textShadow:"0 2px 8px rgba(0,0,0,.8)" }}>{overlay.price}</div>}
                       </div>
                     )}
-                  </div>
-
-                  {/* Name + badges — below photo, fully readable */}
-                  <div style={{ padding:"14px 18px 10px", borderBottom:"1px solid #111f3a" }}>
-                    <div style={{ fontSize:30, fontWeight:900, color:"#fff", lineHeight:1.1, letterSpacing:".3px", marginBottom:10 }}>
-                      {p.name}
-                    </div>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...(ROLE_STYLE[p.role]??{ background:"#1a2d50", color:"#90a4d4", border:"1px solid #2a3d6a" }) }}>{p.role}</span>
-                      <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.batting}</span>
-                      {p.bowling !== "N/A" && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, background:"#1a2d50", color:"#8899bb", border:"1px solid #2a3d6a" }}>{p.bowling}</span>}
-                      {p.availabilityUncertain && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...UNCERTAIN_BADGE }}>May/May Not Play</span>}
-                      {p.manuallyAdded && <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20, fontWeight:700, ...MANUAL_BADGE }}>Manual Entry</span>}
-                    </div>
-                  </div>
-
-                  {/* Info section */}
-                  <div style={{ padding:"12px 18px 16px" }}>
-                    <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                        {p.city}{p.state && p.state!=="—" ? `, ${p.state}` : ""}
-                      </div>
-                      {p.mobile && (
-                        <div style={{ display:"flex", alignItems:"center", gap:6, color:"#6a80aa", fontSize:14 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#4a6080"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
-                          {p.mobile}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               ) : (
