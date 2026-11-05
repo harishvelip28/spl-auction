@@ -18,14 +18,19 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
   };
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:16,
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, padding:16,
       background:"radial-gradient(ellipse at top, #0c1a33 0%, #030710 60%)", color:"#fff",
       fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
       <style>{`.login-inp:focus{ border-color:#f0c040!important; } *{ box-sizing:border-box; }`}</style>
+      <a href="#downloads"
+        style={{ fontSize:15, fontWeight:800, color:"#f0c040", textDecoration:"none", padding:"10px 18px", border:"1px solid #f0c040", borderRadius:10, background:"#07101e" }}>
+        ⬇ Player form &amp; SPL logo downloads
+      </a>
       <form onSubmit={submit} autoComplete="on"
         style={{ width:"100%", maxWidth:400, background:"#07101e", border:"1px solid #1a2d50", borderRadius:16, padding:"36px 30px 30px", boxShadow:"0 20px 60px rgba(0,0,0,.5)" }}>
-        <div style={{ width:56, height:56, margin:"0 auto 16px", borderRadius:12, background:"#f0c040", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🏏</div>
-        <div style={{ textAlign:"center", fontSize:22, fontWeight:800, color:"#f0c040", letterSpacing:".3px" }}>Player Auction</div>
+        <img src={`${import.meta.env.BASE_URL}spl-logo.png`} alt="Shigao Premier League" width={120} height={120}
+          style={{ display:"block", width:120, height:120, margin:"0 auto 16px", borderRadius:"50%", objectFit:"cover", boxShadow:"0 0 0 3px #f0c040, 0 8px 24px rgba(0,0,0,.5)" }} />
+        <div style={{ textAlign:"center", fontSize:22, fontWeight:800, color:"#f0c040", letterSpacing:".3px" }}>Player Auction Setup Login</div>
         <div style={{ textAlign:"center", fontSize:12, color:"#4a6080", letterSpacing:"1.5px", textTransform:"uppercase", margin:"6px 0 28px" }}>Members only</div>
 
         {error && (
