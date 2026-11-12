@@ -25,7 +25,7 @@ export const DOWNLOADS: DownloadItem[] = [
     description: "Fill in and submit the registration form online.",
     icon: "📝",
     link: "https://docs.google.com/forms/d/e/1FAIpQLScJV3UGvVjw1pbPeSPQPJLt4u9BTBC6Jwh7FCoe7f69f35sAQ/viewform",
-    disabled: true, // turned off for now — remove this line to enable
+    // disabled: true, // turned off for now — remove this line to enable
   },
   {
     title: "Player Form (printable)",
