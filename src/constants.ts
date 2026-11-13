@@ -5,7 +5,7 @@ export const CONFIG_KEY = "auction-config-v2";
 export const STATE_KEY  = "auction-state-v2";
 export const MANUAL_KEY = "auction-manual-v2";
 
-const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ53BEPKar2-EpozZWB4Oxr13lImHg6QwpOma8HDtuJ5Uu03kqWuCn_xCjgwbVjnhRUlytjmGRTGVff/pub?gid=1862176652&single=true&output=csv";
+const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVKm1zcwXbaj8Ui3jQl_1fJPU-4ZN3G9V1Dd2vRX6rWdAlkInpTHj5VMrLVjjIsvVlD4SkPal7V3Xc/pub?gid=98031908&single=true&output=csv";
 
 const DEFAULT_TEAMS: TeamDef[] = [
   { name: "Ajoba Warrior's",    color: "#e53935" },
@@ -17,7 +17,7 @@ const DEFAULT_TEAMS: TeamDef[] = [
 ];
 
 export const DEFAULT_CONFIG: AuctionConfig = {
-  league: { name: "Shigao Premier League", year: "2026", logo: "" },
+  league: { name: "Shigao Premier League", year: "2027", logo: "" },
   rules:  { totalPurse: 10000, minPlayers: 12, bidStep: 100, defaultBasePrice: 300 },
   teams:  DEFAULT_TEAMS,
   csv:    { url: DEFAULT_CSV, columnMap: {} },
