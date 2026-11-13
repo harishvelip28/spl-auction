@@ -3,7 +3,7 @@ import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY } from "./constants";
 import html2canvas from "html2canvas";
 import { AuctionSummary } from "./components/AuctionSummary";
-import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs } from "./utils";
+import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -112,6 +112,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const lead   = bids.length ? bids[bids.length - 1] : null;
   const leadTeam = lead ? teams[lead.team] : null;
   const nextBid  = !p ? 0 : lead ? p.currentBid + bidStepAt(p.currentBid, rules) : p.basePrice;
+  const war    = avail ? bidWar(bids) : null;
   const canLow = !!p && avail && bids.length > 0;
   const canUns = !!p && avail && bids.length === 0;
   const canNav = !p || !avail || bids.length === 0;
@@ -131,11 +132,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       return;
     }
     setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:nextBid } : pl));
-    setBids(b => [...b, { team:i, amount:nextBid, at:Date.now() }]);
+    const nb = [...bids, { team:i, amount:nextBid, at:Date.now() }];
+    setBids(nb);
     setGoing(0);
     setSelTeam(i);
     setBidKey(k => k+1);
-    play("bid");
+    play(bidWar(nb)?.count === BID_WAR_MIN ? "war" : "bid");   // fanfare once, when the war breaks out
   }
   /** Take back the most recent bid (mistaken click, or the team withdraws it). */
   function retractBid() {
@@ -532,6 +534,15 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         ) : (
                           <div style={{ marginTop:10, fontSize:14, color:"#4a6080", fontWeight:600 }}>Awaiting opening bid</div>
                         ))}
+                        {war && (
+                          <div style={{ marginTop:10, padding:"6px 10px", borderRadius:10, background:"#2a0d05", border:"1px solid #7a3a10", fontSize:13, fontWeight:800, color:"#ff9f43", lineHeight:1.4 }}>
+                            🔥 BID WAR · {war.count} bids<br />
+                            <span style={{ color:teams[war.a]?.color }}>{teams[war.a]?.name}</span>
+                            <span style={{ color:"#6a80aa" }}> vs </span>
+                            <span style={{ color:teams[war.b]?.color }}>{teams[war.b]?.name}</span>
+                            <span style={{ color:"#6a80aa", fontWeight:600 }}> · {fmt(war.from)} → {fmt(p!.currentBid)}</span>
+                          </div>
+                        )}
                         {avail && going > 0 && (
                           <div key={going} style={{ marginTop:10 }}>
                             <div style={{ fontSize:18, fontWeight:900, letterSpacing:"2px", color: going===1 ? "#f0a030" : "#ff5f57" }}>

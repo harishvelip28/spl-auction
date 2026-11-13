@@ -3,7 +3,7 @@ import type React from "react";
 import type { AuctionConfig, AuctionState } from "./types";
 import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, SUMMARY_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
 import { AuctionSummary } from "./components/AuctionSummary";
-import { fmt, calcMax, squadFull, callSecs } from "./utils";
+import { fmt, calcMax, squadFull, callSecs, bidWar, BID_WAR_MIN } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -117,6 +117,8 @@ export function DisplayView() {
   const bids = st.bids ?? [];
   const lead = bids.length ? bids[bids.length - 1] : null;
   const leadTeam = lead ? st.teams[lead.team] : null;
+  const war = p?.status === "available" ? bidWar(bids) : null;
+  const warA = war ? st.teams[war.a] : undefined, warB = war ? st.teams[war.b] : undefined;
   const avail = p?.status === "available";
   const sold = st.players.filter(x => x.status === "sold").length;
   const remaining = st.players.filter(x => x.status === "available").length;
@@ -132,6 +134,8 @@ export function DisplayView() {
         .dv-bid{ animation: dvBid .25s ease forwards; }
         .dv-puls{ animation: dvPuls 1.4s infinite; }
         @keyframes dvBar { from{width:100%} to{width:0%} }
+        @keyframes dvWar { 0%,100%{box-shadow:0 0 18px rgba(255,120,40,.35)} 50%{box-shadow:0 0 42px rgba(255,120,40,.8)} }
+        .dv-war{ animation: dvWar 1.1s ease-in-out infinite; }
         .dv-bar{ animation-name: dvBar; animation-timing-function: linear; animation-fill-mode: forwards; }
       `}</style>
 
@@ -207,6 +211,23 @@ export function DisplayView() {
             ) : (
               <div style={{ fontSize:24, color:"#4a6080", fontWeight:700 }}>Awaiting opening bid…</div>
             ))}
+
+            {war && warA && warB && (
+              <div key={war.count === BID_WAR_MIN ? "war-start" : "war"} className={war.count === BID_WAR_MIN ? "dv-pop dv-war" : "dv-war"}
+                style={{ alignSelf:"flex-start", maxWidth:"100%", padding:"12px 22px", borderRadius:16, background:"linear-gradient(90deg, #2a0d05, #1a0806)", border:"2px solid #ff7a28" }}>
+                <div style={{ fontSize:"clamp(20px, 2vw, 28px)", fontWeight:900, letterSpacing:5, color:"#ff9f43" }}>
+                  🔥 BID WAR{war.count >= 8 ? " 🔥🔥" : war.count >= 6 ? " 🔥" : ""}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:"4px 14px", marginTop:4, fontSize:"clamp(24px, 2.6vw, 38px)", fontWeight:900 }}>
+                  <span style={{ color:warA.color }}>{warA.name}</span>
+                  <span style={{ color:"#ff7a28", fontSize:"0.8em" }}>⚔</span>
+                  <span style={{ color:warB.color }}>{warB.name}</span>
+                </div>
+                <div style={{ marginTop:4, fontSize:18, color:"#c0a090", fontWeight:700 }}>
+                  {war.count} bids · {fmt(war.from)} → {fmt(p.currentBid)}
+                </div>
+              </div>
+            )}
 
             {avail && lead && going > 0 && (
               <div key={going} className="dv-pop" style={{ maxWidth:520 }}>
