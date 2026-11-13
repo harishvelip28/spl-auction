@@ -15,6 +15,7 @@ import { AddPlayerModal } from "./components/AddPlayerModal";
 import { sendDisplay } from "./displayChannel";
 import { play, soundOn, setSoundOn } from "./sounds";
 import { ShortcutHelp } from "./components/ShortcutHelp";
+import { UnsoldRound, type UnsoldChange } from "./components/UnsoldRound";
 
 type View = "auction" | "players" | "summary";
 const readView = (): View => (window.location.hash === "#players" ? "players" : window.location.hash === "#summary" ? "summary" : "auction");
@@ -54,6 +55,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [sound, setSound] = useState(soundOn);
   const toggleSound = () => { const on = !sound; setSound(on); setSoundOn(on); notify(on ? "🔊 Sound on" : "🔇 Sound off"); };
   const [showHelp, setShowHelp] = useState(false);
+  const [showUnsold, setShowUnsold] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = React.useRef<number | undefined>(undefined);
   const notify = (msg: string) => {
@@ -217,17 +219,28 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     const fall = players.findIndex(x => x.status==="available");
     const idx  = next!==-1 ? next : fall;
     if (idx !== -1) { setCur(idx); setOverlay(null); return; }
-    const hasUnsold = players.some(pl => pl.status==="unsold");
-    if (hasUnsold) {
-      const re = players.map(pl => pl.status==="unsold" ? { ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined } : pl);
-      const fi = re.findIndex(pl => pl.status==="available");
-      setPlayers(re); setCur(fi!==-1?fi:0);
-      setOverlay({ text:"RE-AUCTION" });
-      sendDisplay({ type:"reauction" });
-      setTimeout(() => setOverlay(null), 1800);
+    if (players.some(pl => pl.status==="unsold")) {
+      notify("Everyone has been auctioned. Choose which unsold players come back, and at what price.");
+      setShowUnsold(true);
       return;
     }
     notify("Auction complete. No available players left.");
+  }
+  /** Unsold round: put the chosen unsold players back up, at their (possibly lowered) new base price. */
+  function startUnsoldRound(changes: UnsoldChange[]) {
+    if (!changes.length) return;
+    if (!canNav) { notify("Bidding is open — mark the player SOLD (or retract the bids) first."); return; }
+    setLastSnapshot({ players, teams, bids, activity });
+    const base = new Map(changes.map(c => [c.idx, c.base]));
+    const re = players.map((pl,i) => base.has(i)
+      ? { ...pl, status:"available" as Status, basePrice:base.get(i)!, currentBid:base.get(i)!, soldTo:undefined, soldPrice:undefined } : pl);
+    setPlayers(re); setBids([]); setGoing(0);
+    setCur(Math.min(...changes.map(c => c.idx)));
+    setShowUnsold(false);
+    setOverlay({ text:"UNSOLD ROUND" });
+    sendDisplay({ type:"reauction" });
+    play("once");
+    setTimeout(() => setOverlay(null), 1800);
   }
   function prevPlayer() {
     if (!canNav) { notify("Bidding is open — mark the player SOLD (or retract the bids) first."); return; }
@@ -243,7 +256,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     const pool = players.map((_,i) => i).filter(i => i !== cur && players[i].status === "available");
     if (!pool.length) {
       if (avail) notify(`${p!.name} is the last available player.`);
-      else nextPlayer();   // nothing left: same as NEXT (offers the unsold players again)
+      else nextPlayer();   // nothing left: same as NEXT (opens the unsold round)
       return;
     }
     const idx = pool[Math.floor(Math.random() * pool.length)];
@@ -329,6 +342,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       if (e.ctrlKey || e.metaKey || e.altKey) return;   // leave browser shortcuts (Ctrl+R etc.) alone
       if (e.key === "?") { e.preventDefault(); setShowHelp(h => !h); return; }
       if (showHelp) { if (e.key === "Escape") { e.preventDefault(); setShowHelp(false); } return; }
+      if (showUnsold) { if (e.key === "Escape") { e.preventDefault(); setShowUnsold(false); } return; }
       if (e.key === "m" || e.key === "M") { e.preventDefault(); toggleSound(); return; }
       if (view !== "auction") return;
       if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
@@ -342,6 +356,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
+
+  const overlayColor = !overlay ? "" : overlay.text==="SOLD!" ? (overlay.teamColor ?? "#30d158") : overlay.text==="UNSOLD ROUND" ? "#f0c040" : "#ff5f57";
 
   // ── RENDER ──────────────────────────────────────────────────────────────────
 
@@ -592,9 +608,9 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                     {/* SOLD / UNSOLD overlay */}
                     {overlay && (
                       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10,
-                        background: overlay.text==="SOLD!" ? `${overlay.teamColor}33` : "rgba(255,59,48,.18)",
+                        background: overlay.text==="SOLD!" ? `${overlay.teamColor}33` : overlay.text==="UNSOLD ROUND" ? "rgba(240,192,64,.16)" : "rgba(255,59,48,.18)",
                         backdropFilter:"blur(4px)" }}>
-                        <div className="pop" style={{ fontSize:64, fontWeight:900, letterSpacing:4, color: overlay.text==="SOLD!" ? (overlay.teamColor ?? "#30d158") : "#ff5f57", textShadow:`0 0 40px ${overlay.text==="SOLD!" ? (overlay.teamColor ?? "#30d158") : "#ff5f57"}` }}>
+                        <div className="pop" style={{ fontSize:64, fontWeight:900, letterSpacing:4, color: overlayColor, textShadow:`0 0 40px ${overlayColor}` }}>
                           {overlay.text}
                         </div>
                         {overlay.price && <div style={{ fontSize:22, fontWeight:700, color:"#fff", textAlign:"center", padding:"0 20px", textShadow:"0 2px 8px rgba(0,0,0,.8)" }}>{overlay.price}</div>}
@@ -699,6 +715,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   style={{ padding:"11px 0", borderRadius:10, border:"1px solid #2a3d6a", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#c0d4f0" }}>
                   🎲 Random player
                 </button>
+                {unsold > 0 && (
+                  <button className="cbtn" onClick={()=>setShowUnsold(true)} disabled={!canNav} title="Bring unsold players back, optionally at a lower base price"
+                    style={{ padding:"11px 0", borderRadius:10, border:"1px solid #3a2800", fontSize:15, fontWeight:800, cursor:"pointer", background:"#1a1000", color:"#f0c040" }}>
+                    ♻ Unsold round ({unsold})
+                  </button>
+                )}
                 <button className="cbtn" onClick={deletePlayer} disabled={!p}
                   style={{ padding:"10px 0", borderRadius:10, border:"1px solid #2a1010", fontSize:14, fontWeight:700, cursor:"pointer", background:"transparent", color:"#7a4040" }}>
                   Delete Player
@@ -860,6 +882,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
           {toast}
         </div>
       )}
+      {showUnsold && <UnsoldRound players={players} rules={rules} onStart={startUnsoldRound} onClose={()=>setShowUnsold(false)} />}
       {showLive && <LiveShare share={share} onShare={setShare} status={liveStatus} onClose={()=>setShowLive(false)} />}
       {showHelp && <ShortcutHelp onClose={()=>setShowHelp(false)} />}
       {showRoster   && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}

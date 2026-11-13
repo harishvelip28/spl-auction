@@ -48,8 +48,9 @@ export function normPlayer(p: Partial<Player>, serial: number, minBase = 300): P
     soldTo: p.soldTo, soldPrice: p.soldPrice,
   };
 }
-export function playerKey(p: Pick<Player,"name"|"mobile"|"role"|"city"|"state"|"photo"|"basePrice">) {
-  return [p.name,p.mobile,p.role,p.city,p.state,p.photo,String(p.basePrice)].map(v=>v.trim().toLowerCase()).join("|");
+/** Identity for de-duplicating players. Leaves out the base price: an unsold round can lower it. */
+export function playerKey(p: Pick<Player,"name"|"mobile"|"role"|"city"|"state"|"photo">) {
+  return [p.name,p.mobile,p.role,p.city,p.state,p.photo].map(v=>v.trim().toLowerCase()).join("|");
 }
 export function mergePlayers(a: Player[], b: Player[]) {
   const seen = new Set<string>();
