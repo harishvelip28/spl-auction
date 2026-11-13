@@ -8,6 +8,10 @@ import { rdCfg, rdState, rdManual } from "./storage";
 import { SetupWizard } from "./wizard/SetupWizard";
 import { AuctionApp } from "./AuctionApp";
 import { DisplayView } from "./DisplayView";
+import { OwnerView } from "./OwnerView";
+
+/** Owner phone link: /#live/<id> */
+const liveId = () => /^#live\/([a-z0-9]{6,40})$/i.exec(window.location.hash)?.[1] ?? null;
 
 export default function App() {
   const [config,  setConfig]  = useState<AuctionConfig|null>(() => rdCfg());
@@ -19,8 +23,10 @@ export default function App() {
   const [showDownloads, setShowDownloads] = useState(() => window.location.hash === "#downloads");
   // Projector screen at /#display — opened from the console, follows it live.
   const [showDisplay, setShowDisplay] = useState(() => window.location.hash === "#display");
+  // Team owners' phone view at /#live/<id> — public, follows the console through Firebase.
+  const [ownerId, setOwnerId] = useState(liveId);
   useEffect(() => {
-    const onHash = () => { setShowDownloads(window.location.hash === "#downloads"); setShowDisplay(window.location.hash === "#display"); };
+    const onHash = () => { setShowDownloads(window.location.hash === "#downloads"); setShowDisplay(window.location.hash === "#display"); setOwnerId(liveId()); };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -45,6 +51,7 @@ export default function App() {
     setConfig(cfg); setPlayers(ps); setShowSetup(false);
   };
 
+  if (ownerId) return <OwnerView id={ownerId} />;
   if (showDownloads) return <Downloads onBack={leaveDownloads} />;
   if (!user) return <Login onLogin={setUser} />;
   if (showDisplay) return <DisplayView />;
