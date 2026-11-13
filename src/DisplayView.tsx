@@ -263,13 +263,13 @@ export function DisplayView() {
           </> : <div style={{ fontSize:28, color:"#4a6080" }}>Next player coming up…</div>}
         </div>
 
-        {/* SOLD / UNSOLD / RE-AUCTION announcement */}
+        {/* SOLD / UNSOLD / UNSOLD ROUND announcement */}
         {event && (
           <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16,
             background: event.type === "sold" ? `${event.color}40` : "rgba(3,7,16,.7)", backdropFilter:"blur(6px)" }}>
             {(() => {
               const color = event.type === "sold" ? event.color : event.type === "unsold" ? "#ff5f57" : "#f0c040";
-              const text  = event.type === "sold" ? "SOLD!" : event.type === "unsold" ? "UNSOLD" : "RE-AUCTION";
+              const text  = event.type === "sold" ? "SOLD!" : event.type === "unsold" ? "UNSOLD" : "UNSOLD ROUND";
               return <div className="dv-pop" style={{ fontSize:"clamp(80px, 11vw, 180px)", fontWeight:900, letterSpacing:6, color, textShadow:`0 0 60px ${color}` }}>{text}</div>;
             })()}
             {event.type === "sold" && (
