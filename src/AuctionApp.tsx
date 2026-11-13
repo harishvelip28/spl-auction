@@ -9,6 +9,8 @@ import { UserBadge } from "./components/UserBadge";
 import { TeamRoster } from "./components/TeamRoster";
 import { AddPlayerModal } from "./components/AddPlayerModal";
 import { sendDisplay } from "./displayChannel";
+import { play, soundOn, setSoundOn } from "./sounds";
+import { ShortcutHelp } from "./components/ShortcutHelp";
 
 export function AuctionApp({ config, initPlayers, onSetup, user }: {
   config: AuctionConfig;
@@ -42,6 +44,9 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   });
   // Auctioneer's call: 0 idle, 1 "going once", 2 "going twice" → then SOLD automatically.
   const [going, setGoing] = useState<0 | 1 | 2>(0);
+  const [sound, setSound] = useState(soundOn);
+  const toggleSound = () => { const on = !sound; setSound(on); setSoundOn(on); notify(on ? "🔊 Sound on" : "🔇 Sound off"); };
+  const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = React.useRef<number | undefined>(undefined);
   const notify = (msg: string) => {
@@ -109,6 +114,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setGoing(0);
     setSelTeam(i);
     setBidKey(k => k+1);
+    play("bid");
   }
   /** Take back the most recent bid (mistaken click, or the team withdraws it). */
   function retractBid() {
@@ -137,6 +143,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setActivity(prev => [{ playerName:p.name, teamName:bt.name, teamColor:bt.color, price:p.currentBid, soldAt:Date.now() }, ...prev].slice(0, 8));
     setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}`, teamColor:bt.color });
     sendDisplay({ type:"sold", player:p.name, team:bt.name, color:bt.color, price:p.currentBid });
+    play("sold");
     setTimeout(() => setOverlay(null), 2500);
   }
   /** Going once → going twice → SOLD. Pressing again skips ahead; a new bid cancels it. */
@@ -152,6 +159,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setPlayers(prev => prev.map((pl,i) => i===cur ? { ...pl, status:"unsold" } : pl));
     setOverlay({ text:"UNSOLD" });
     sendDisplay({ type:"unsold", player:p.name });
+    play("unsold");
     setTimeout(() => setOverlay(null), 1500);
   }
   function undoLast() {
@@ -189,6 +197,23 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (prev===-1) for (let i=players.length-1; i>=0; i--) { if (players[i].status==="available") { prev=i; break; } }
     if (prev !== -1) { setCur(prev); setOverlay(null); return; }
     notify("No available players.");
+  }
+  /** Draw a random available player (not the one on the block); the projector shows a rolling reveal. */
+  function randomPlayer() {
+    if (!canNav) { notify("Bidding is open — mark the player SOLD (or retract the bids) first."); return; }
+    const pool = players.map((_,i) => i).filter(i => i !== cur && players[i].status === "available");
+    if (!pool.length) {
+      if (avail) notify(`${p!.name} is the last available player.`);
+      else nextPlayer();   // nothing left: same as NEXT (offers the unsold players again)
+      return;
+    }
+    const idx = pool[Math.floor(Math.random() * pool.length)];
+    const pick = players[idx];
+    const names = pool.filter(i => i !== idx).sort(() => Math.random() - .5).slice(0, 20).map(i => players[i].name);
+    setCur(idx); setOverlay(null);
+    sendDisplay({ type:"draw", names: names.length ? names : [pick.name], player: pick.name, serial: pick.serialNo });
+    play("draw");
+    notify(`🎲 Drew #${pick.serialNo} ${pick.name}`);
   }
   function openSetup() {
     if (!window.confirm("⚙ Open Setup while the auction is live?\n\nLaunching the auction again from Setup will reset all bids and team assignments.")) return;
@@ -252,6 +277,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   // Advance the call on a timer; any change to `going` (bid, retract, cancel) restarts or stops it.
   useEffect(() => {
     sendDisplay({ type:"going", stage:going });
+    if (going) play(going === 1 ? "once" : "twice");
     if (!going || !callSecs(rules)) return;   // manual mode: the auctioneer advances each stage
     const t = window.setTimeout(() => { if (going === 1) setGoing(2); else markSold(); }, callSecs(rules) * 1000);
     return () => window.clearTimeout(t);
@@ -261,12 +287,17 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;   // leave browser shortcuts (Ctrl+R etc.) alone
+      if (e.key === "?") { e.preventDefault(); setShowHelp(h => !h); return; }
+      if (showHelp) { if (e.key === "Escape") { e.preventDefault(); setShowHelp(false); } return; }
+      if (e.key === "m" || e.key === "M") { e.preventDefault(); toggleSound(); return; }
       if (view !== "auction") return;
       if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
       if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1); }
       if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); callGoing(); }
+      if (e.key === "r" || e.key === "R") { e.preventDefault(); randomPlayer(); }
       if (e.key === "Escape" && going) { e.preventDefault(); setGoing(0); }
     };
     window.addEventListener("keydown", handler);
@@ -356,6 +387,14 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 <button className="cbtn" onClick={openDisplay} title="Open the audience screen in a new window — drag it to the projector"
                   style={{ padding:"8px 16px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
                   📺 Display
+                </button>
+                <button className="cbtn" onClick={toggleSound} title={sound ? "Sound on — click to mute (key M)" : "Sound off — click to turn on (key M)"}
+                  style={{ padding:"8px 12px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color: sound ? "#90a4d4" : "#4a6080" }}>
+                  {sound ? "🔊" : "🔇"}
+                </button>
+                <button className="cbtn" onClick={()=>setShowHelp(true)} title="Keyboard shortcuts (?)"
+                  style={{ padding:"8px 12px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#90a4d4" }}>
+                  ⌨ ?
                 </button>
                 <button className="cbtn" onClick={openSetup}
                   style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }}>
@@ -591,6 +630,10 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                     NEXT ▶
                   </button>
                 </div>
+                <button className="cbtn" onClick={randomPlayer} disabled={!canNav} title="Draw a random available player (key R)"
+                  style={{ padding:"11px 0", borderRadius:10, border:"1px solid #2a3d6a", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#c0d4f0" }}>
+                  🎲 Random player
+                </button>
                 <button className="cbtn" onClick={deletePlayer} disabled={!p}
                   style={{ padding:"10px 0", borderRadius:10, border:"1px solid #2a1010", fontSize:14, fontWeight:700, cursor:"pointer", background:"transparent", color:"#7a4040" }}>
                   Delete Player
@@ -730,6 +773,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
           {toast}
         </div>
       )}
+      {showHelp && <ShortcutHelp onClose={()=>setShowHelp(false)} />}
       {showRoster   && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}
       {showAddPlayer && (
         <AddPlayerModal
