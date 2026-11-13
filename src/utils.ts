@@ -72,7 +72,8 @@ export function bidStepAt(amount: number, rules: RulesConfig) {
   return step;
 }
 export const squadFull = (t: Team, rules: RulesConfig) => !!rules.maxPlayers && t.players.length >= rules.maxPlayers;
-export const callSecs = (rules: RulesConfig) => Math.max(1, rules.callSeconds ?? 3);
+/** Seconds per going-once/twice stage; 0 = manual (the auctioneer advances each stage). */
+export const callSecs = (rules: RulesConfig) => Math.max(0, rules.callSeconds ?? 5);
 export function calcMax(t: Team, min: number, base: number) {
   return t.purse - Math.max(0, min - t.players.length - 1) * base;
 }

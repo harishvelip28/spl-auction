@@ -148,9 +148,11 @@ export function DisplayView() {
                   textShadow:`0 0 30px ${going === 1 ? "#f0a03088" : "#ff5f5788"}` }}>
                   {going === 1 ? "GOING ONCE…" : "GOING TWICE…"}
                 </div>
-                <div style={{ height:6, background:"#111f3a", borderRadius:3, marginTop:8, overflow:"hidden" }}>
-                  <div className="dv-bar" style={{ height:"100%", background: going === 1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
-                </div>
+                {callSecs(rules) > 0 && (
+                  <div style={{ height:6, background:"#111f3a", borderRadius:3, marginTop:8, overflow:"hidden" }}>
+                    <div className="dv-bar" style={{ height:"100%", background: going === 1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
+                  </div>
+                )}
               </div>
             )}
 

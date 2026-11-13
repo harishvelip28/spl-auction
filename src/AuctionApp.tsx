@@ -252,7 +252,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   // Advance the call on a timer; any change to `going` (bid, retract, cancel) restarts or stops it.
   useEffect(() => {
     sendDisplay({ type:"going", stage:going });
-    if (!going) return;
+    if (!going || !callSecs(rules)) return;   // manual mode: the auctioneer advances each stage
     const t = window.setTimeout(() => { if (going === 1) setGoing(2); else markSold(); }, callSecs(rules) * 1000);
     return () => window.clearTimeout(t);
   }, [going]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -465,9 +465,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                             <div style={{ fontSize:18, fontWeight:900, letterSpacing:"2px", color: going===1 ? "#f0a030" : "#ff5f57" }}>
                               {going===1 ? "GOING ONCE…" : "GOING TWICE…"}
                             </div>
-                            <div style={{ height:4, background:"#111f3a", borderRadius:2, marginTop:6, overflow:"hidden" }}>
-                              <div className="callbar" style={{ height:"100%", background: going===1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
-                            </div>
+                            {callSecs(rules) > 0 && (
+                              <div style={{ height:4, background:"#111f3a", borderRadius:2, marginTop:6, overflow:"hidden" }}>
+                                <div className="callbar" style={{ height:"100%", background: going===1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
+                              </div>
+                            )}
                           </div>
                         )}
                         {avail && bids.length > 1 && (
@@ -553,10 +555,10 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   ↶ Retract last bid
                 </button>
                 <div style={{ display:"grid", gridTemplateColumns: going ? "1fr auto" : "1fr", gap:8 }}>
-                  <button className="cbtn" onClick={callGoing} disabled={!avail || !leadTeam} title="Auctioneer's call — auto-SOLD at the end (key G, Esc cancels)"
+                  <button className="cbtn" onClick={callGoing} disabled={!avail || !leadTeam} title={callSecs(rules) ? "Auctioneer's call — auto-SOLD at the end (key G, Esc cancels)" : "Auctioneer's call — press for once, twice, SOLD (key G, Esc cancels)"}
                     style={{ padding:"12px 0", borderRadius:10, border:`1px solid ${going?"#7a3a10":"#3a2800"}`, fontSize:15, fontWeight:800, cursor:"pointer",
                       background: going ? "#2a1205" : "#1a1000", color: going===2 ? "#ff7a50" : "#f0a030" }}>
-                    {going===0 ? "🔨 Going once…" : going===1 ? "🔨 Going twice ▸" : "🔨 Sold now ▸"}
+                    {going===0 ? "🔨 Going once…" : going===1 ? "🔨 Going twice ▸" : callSecs(rules) ? "🔨 Sold now ▸" : "🔨 SOLD ▸"}
                   </button>
                   {going > 0 && (
                     <button className="cbtn" onClick={()=>setGoing(0)} title="Cancel the call (Esc)"

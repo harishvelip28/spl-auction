@@ -10,7 +10,7 @@ export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCo
     { label: "Purse / team", value: fmt(cfg.rules.totalPurse) },
     { label: "Squad size",   value: `min ${cfg.rules.minPlayers}${cfg.rules.maxPlayers ? `, max ${cfg.rules.maxPlayers}` : ", no max"}` },
     { label: "Bid step",     value: [fmt(cfg.rules.bidStep), ...[...(cfg.rules.bidTiers ?? [])].filter(t=>t.step>0).sort((a,b)=>a.from-b.from).map(t => `${fmt(t.step)} from ${fmt(t.from)}`)].join(" → ") },
-    { label: "Going once/twice", value: `${callSecs(cfg.rules)}s each, then SOLD` },
+    { label: "Going once/twice", value: callSecs(cfg.rules) ? `${callSecs(cfg.rules)}s each, then SOLD` : "Manual — press G for once, twice, SOLD" },
     { label: "Base price",   value: fmt(cfg.rules.defaultBasePrice) },
   ];
   return (

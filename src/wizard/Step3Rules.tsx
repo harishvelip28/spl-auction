@@ -60,14 +60,14 @@ export function Step3Rules({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
         </div>
       </div>
 
-      {field("Going once / twice — seconds each", "callSeconds", 1, 1, "", "then auto-SOLD", 3)}
+      {field("Going once / twice — seconds each", "callSeconds", 0, 1, "", "then auto-SOLD · 0 = manual (press G for each stage)", 5)}
 
       <div style={{ background:"#070f1e", border:"1px solid #1a2d50", borderRadius:8, padding:"12px 14px", fontSize:14, color:"#4a6080", lineHeight:1.8 }}>
         Teams start with {fmt(r.totalPurse)} · Players start at {fmt(r.defaultBasePrice)} minimum ·
         Each team must buy ≥{r.minPlayers} players{r.maxPlayers ? ` and at most ${r.maxPlayers}` : ""}<br />
         Bids raise by {fmt(r.bidStep)}
         {sorted.map(t => <span key={`${t.from}-${t.step}`}>, then {fmt(t.step)} from {fmt(t.from)}</span>)}
-        {" "}· Going once / twice: {callSecs(r)}s each
+        {" "}· Going once / twice: {callSecs(r) ? `${callSecs(r)}s each, then auto-SOLD` : "manual"}
       </div>
     </div>
   );

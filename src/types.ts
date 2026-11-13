@@ -14,7 +14,7 @@ export interface RulesConfig {
   maxPlayers?: number;
   /** Bigger raises at higher prices: from this current bid upward, raise by `step`. */
   bidTiers?: BidTier[];
-  /** Seconds per "going once" / "going twice" stage before auto-SOLD. */
+  /** Seconds per "going once" / "going twice" stage before auto-SOLD; 0 = manual. Default 5. */
   callSeconds?: number;
 }
 export interface BidTier { from: number; step: number; }
