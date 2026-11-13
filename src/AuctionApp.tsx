@@ -3,6 +3,8 @@ import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY } from "./constants";
 import html2canvas from "html2canvas";
 import { AuctionSummary } from "./components/AuctionSummary";
+import { LiveShare, type LiveStatus } from "./components/LiveShare";
+import { buildSnapshot, liveConfigured, publish, rdShare, wrShare, type ShareState } from "./live";
 import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
@@ -105,6 +107,20 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       a.click();
     } catch { notify("Could not create the image."); }
   }
+  // Owners' phone link: publish a public snapshot to Firebase after each change while sharing is on.
+  const [share, setShareState] = useState<ShareState | null>(rdShare);
+  const setShare = (s: ShareState) => { setShareState(s); wrShare(s); };
+  const [showLive, setShowLive] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>({ ok: true });
+  useEffect(() => {
+    if (!share?.on || !liveConfigured()) return;
+    const t = window.setTimeout(() => {
+      publish(share.id, buildSnapshot(config, { players, teams, cur, bids, going, activity }))
+        .then(() => setLiveStatus({ ok: true, at: Date.now() }))
+        .catch(e => setLiveStatus({ ok: false, msg: (e as Error).message }));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [share, players, teams, cur, bids, going, activity]);  // eslint-disable-line react-hooks/exhaustive-deps
   const openDisplay = () => window.open(window.location.pathname + window.location.search + "#display", "spl-auction-display");
 
   const p      = players[cur];
@@ -418,6 +434,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 <button className="cbtn" onClick={()=>setShowRoster(true)}
                   style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
                   📋 Rosters
+                </button>
+                <button className="cbtn" onClick={()=>setShowLive(true)} title={share?.on ? (liveStatus.ok ? "Owners' phone link is live" : `Phone link problem: ${liveStatus.msg}`) : "Share a live link for team owners' phones"}
+                  style={{ padding:"8px 14px", border:`1px solid ${share?.on ? (liveStatus.ok ? "#1a4a2a" : "#5a1010") : "#1a2d50"}`, borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700,
+                    background: share?.on ? (liveStatus.ok ? "#0a2818" : "#2a0a0a") : "#111f3a", color: share?.on ? (liveStatus.ok ? "#30d158" : "#ff8a80") : "#90a4d4" }}>
+                  📱 Owners{share?.on ? (liveStatus.ok ? " ●" : " ⚠") : ""}
                 </button>
                 <button className="cbtn" onClick={openDisplay} title="Open the audience screen in a new window — drag it to the projector"
                   style={{ padding:"8px 16px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
@@ -839,6 +860,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
           {toast}
         </div>
       )}
+      {showLive && <LiveShare share={share} onShare={setShare} status={liveStatus} onClose={()=>setShowLive(false)} />}
       {showHelp && <ShortcutHelp onClose={()=>setShowHelp(false)} />}
       {showRoster   && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}
       {showAddPlayer && (
