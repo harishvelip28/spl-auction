@@ -4,7 +4,9 @@ export type DisplayEvent =
   | { type: "sold"; player: string; team: string; color: string; price: number }
   | { type: "unsold"; player: string }
   | { type: "reauction" }
-  | { type: "going"; stage: 0 | 1 | 2 };
+  | { type: "going"; stage: 0 | 1 | 2 }
+  /** Random draw: the projector rolls through `names`, then lands on `player`. */
+  | { type: "draw"; names: string[]; player: string; serial: number };
 
 const NAME = "spl-auction-display";
 

@@ -6,6 +6,7 @@ import { fmt, calcMax, squadFull, callSecs } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
 import { PhotoAvatar } from "./components/PhotoAvatar";
+import { DRAW_STEPS, DRAW_END } from "./sounds";
 
 /* Audience screen for the projector (opened from the console's 📺 Display button, at /#display).
    Read-only: follows the operator window through localStorage, shows no contact details and no controls. */
@@ -15,12 +16,42 @@ const load = (): { cfg: AuctionConfig | null; st: AuctionState | null } => {
   return { cfg, st: cfg ? rdState(cfg, rdManual(cfg.rules.defaultBasePrice)) : null };
 };
 
+const toggleFullscreen = () => {
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen?.().catch(() => {});
+};
+
 const initials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 export function DisplayView() {
   const [{ cfg, st }, setData] = useState(load);
   const [event, setEvent] = useState<DisplayEvent | null>(null);
   const [going, setGoing] = useState<0 | 1 | 2>(0);
+  // Random draw: the name currently showing in the roll, and whether it has landed.
+  const [draw, setDraw] = useState<{ name: string; serial?: number; done: boolean } | null>(null);
+
+  // Fullscreen (button, F key or double-click) and an auto-hiding cursor/button for the projector.
+  const [isFull, setIsFull] = useState(() => !!document.fullscreenElement);
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    const toggle = toggleFullscreen;
+    const onFs = () => setIsFull(!!document.fullscreenElement);
+    const onKey = (e: KeyboardEvent) => { if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) toggle(); };
+    let t: number | undefined;
+    const wake = () => { setIdle(false); window.clearTimeout(t); t = window.setTimeout(() => setIdle(true), 2500); };
+    wake();
+    document.addEventListener("fullscreenchange", onFs);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("dblclick", toggle);
+    window.addEventListener("mousemove", wake);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("dblclick", toggle);
+      window.removeEventListener("mousemove", wake);
+      window.clearTimeout(t);
+    };
+  }, []);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -28,14 +59,27 @@ export function DisplayView() {
     };
     window.addEventListener("storage", onStorage);
     let timer: number | undefined;
+    let rolls: number[] = [];
+    const stopRoll = () => { rolls.forEach(window.clearTimeout); rolls = []; setDraw(null); };
     const off = onDisplay(e => {
       if (e.type === "going") { setGoing(e.stage); return; }
+      if (e.type === "draw") {
+        stopRoll();
+        setGoing(0);
+        setEvent(null);
+        const last = DRAW_STEPS.length - 1;
+        rolls = DRAW_STEPS.map((ms, k) => window.setTimeout(() =>
+          setDraw(k === last ? { name: e.player, serial: e.serial, done: true } : { name: e.names[k % e.names.length], done: false }), ms));
+        rolls.push(window.setTimeout(() => setDraw(null), DRAW_END + 1100));
+        return;
+      }
+      stopRoll();
       setGoing(0);
       setEvent(e);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setEvent(null), e.type === "sold" ? 3200 : 2000);
     });
-    return () => { window.removeEventListener("storage", onStorage); off(); window.clearTimeout(timer); };
+    return () => { window.removeEventListener("storage", onStorage); off(); window.clearTimeout(timer); rolls.forEach(window.clearTimeout); };
   }, []);
 
   if (!cfg || !st) {
@@ -57,7 +101,7 @@ export function DisplayView() {
   const soldTeam = p?.soldTo ? st.teams.find(t => t.name === p.soldTo) : undefined;
 
   return (
-    <div style={page}>
+    <div style={{ ...page, cursor: idle ? "none" : "default" }}>
       <style>{`
         @keyframes dvPop  { 0%{transform:scale(.4);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
         @keyframes dvBid  { 0%{transform:translateY(-24px);opacity:0} 100%{transform:translateY(0);opacity:1} }
@@ -193,6 +237,19 @@ export function DisplayView() {
             {event.type === "unsold" && <div style={{ fontSize:32, fontWeight:700, color:"#c0d4f0" }}>{event.player}</div>}
           </div>
         )}
+
+        {/* Random draw: names roll, slow down, and land on the drawn player */}
+        {draw && (
+          <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18,
+            background: draw.done ? "rgba(3,7,16,.55)" : "rgba(3,7,16,.88)", backdropFilter:"blur(8px)", transition:"background .4s" }}>
+            <div style={{ fontSize:"clamp(22px, 2.4vw, 34px)", fontWeight:800, letterSpacing:6, color:"#6a80aa", textTransform:"uppercase" }}>🎲 Random draw</div>
+            <div key={draw.done ? "done" : "roll"} className={draw.done ? "dv-pop" : undefined}
+              style={{ fontSize:"clamp(48px, 6vw, 100px)", fontWeight:900, textAlign:"center", padding:"0 24px", lineHeight:1.1,
+                color: draw.done ? "#f0c040" : "#c0d4f0", textShadow: draw.done ? "0 0 50px rgba(240,192,64,.6)" : "none" }}>
+              {draw.done && draw.serial !== undefined && <span style={{ color:"#90a4d4" }}>#{draw.serial} </span>}{draw.name}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Team purses */}
@@ -218,6 +275,14 @@ export function DisplayView() {
           );
         })}
       </div>
+
+      {!idle && (
+        <button onClick={toggleFullscreen} onDoubleClick={e => e.stopPropagation()} title="Fullscreen (F or double-click)"
+          style={{ position:"fixed", right:18, bottom:18, zIndex:20, padding:"10px 16px", borderRadius:10, border:"1px solid #2a3d6a",
+            background:"rgba(7,16,30,.9)", color:"#c0d4f0", fontSize:15, fontWeight:800, cursor:"pointer" }}>
+          {isFull ? "✕ Exit fullscreen" : "⛶ Fullscreen"}
+        </button>
+      )}
     </div>
   );
 }
