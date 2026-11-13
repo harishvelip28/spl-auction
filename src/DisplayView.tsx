@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type React from "react";
 import type { AuctionConfig, AuctionState } from "./types";
 import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
-import { fmt, calcMax } from "./utils";
+import { fmt, calcMax, squadFull, callSecs } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -20,6 +20,7 @@ const initials = (name: string) => name.split(" ").map(w => w[0]).join("").slice
 export function DisplayView() {
   const [{ cfg, st }, setData] = useState(load);
   const [event, setEvent] = useState<DisplayEvent | null>(null);
+  const [going, setGoing] = useState<0 | 1 | 2>(0);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -28,6 +29,8 @@ export function DisplayView() {
     window.addEventListener("storage", onStorage);
     let timer: number | undefined;
     const off = onDisplay(e => {
+      if (e.type === "going") { setGoing(e.stage); return; }
+      setGoing(0);
       setEvent(e);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setEvent(null), e.type === "sold" ? 3200 : 2000);
@@ -62,6 +65,8 @@ export function DisplayView() {
         .dv-pop{ animation: dvPop .4s cubic-bezier(.34,1.56,.64,1) forwards; }
         .dv-bid{ animation: dvBid .25s ease forwards; }
         .dv-puls{ animation: dvPuls 1.4s infinite; }
+        @keyframes dvBar { from{width:100%} to{width:0%} }
+        .dv-bar{ animation-name: dvBar; animation-timing-function: linear; animation-fill-mode: forwards; }
       `}</style>
 
       {/* Header */}
@@ -137,6 +142,18 @@ export function DisplayView() {
               <div style={{ fontSize:24, color:"#4a6080", fontWeight:700 }}>Awaiting opening bid…</div>
             ))}
 
+            {avail && lead && going > 0 && (
+              <div key={going} className="dv-pop" style={{ maxWidth:520 }}>
+                <div style={{ fontSize:"clamp(34px, 3.6vw, 56px)", fontWeight:900, letterSpacing:4, color: going === 1 ? "#f0a030" : "#ff5f57",
+                  textShadow:`0 0 30px ${going === 1 ? "#f0a03088" : "#ff5f5788"}` }}>
+                  {going === 1 ? "GOING ONCE…" : "GOING TWICE…"}
+                </div>
+                <div style={{ height:6, background:"#111f3a", borderRadius:3, marginTop:8, overflow:"hidden" }}>
+                  <div className="dv-bar" style={{ height:"100%", background: going === 1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
+                </div>
+              </div>
+            )}
+
             {!avail && p.status === "sold" && (
               <div style={{ fontSize:30, fontWeight:900, color:soldTeam?.color ?? "#30d158" }}>SOLD to {p.soldTo} · {fmt(p.soldPrice ?? 0)}</div>
             )}
@@ -180,6 +197,7 @@ export function DisplayView() {
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(st.teams.length, 8)}, minmax(0, 1fr))`, gap:10, padding:"14px 20px", borderTop:"1px solid #1a2d50", background:"#07101e" }}>
         {st.teams.map((t, i) => {
           const leading = avail && lead?.team === i;
+          const full = squadFull(t, rules);
           return (
             <div key={t.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:12, minWidth:0,
               border:`2px solid ${leading ? t.color : "#1a2d50"}`, background: leading ? `${t.color}22` : "#06101e",
@@ -189,8 +207,10 @@ export function DisplayView() {
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:16, fontWeight:800, color:t.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
                 <div style={{ fontSize:20, fontWeight:900, color:"#fff" }}>{fmt(t.purse)}</div>
-                <div style={{ fontSize:13, color:"#6a80aa" }}>{t.players.length}/{rules.minPlayers} players</div>
-                <div style={{ fontSize:13, color:"#6a80aa" }}>max {fmt(calcMax(t, rules.minPlayers, rules.defaultBasePrice))}</div>
+                <div style={{ fontSize:13, color:"#6a80aa" }}>{t.players.length}{rules.maxPlayers ? `/${rules.maxPlayers}` : ""} players{t.players.length < rules.minPlayers ? ` · need ${rules.minPlayers - t.players.length}` : ""}</div>
+                <div style={{ fontSize:13, color: full ? "#ff5f57" : "#6a80aa", fontWeight: full ? 800 : 400 }}>
+                  {full ? "SQUAD FULL" : `max bid ${fmt(calcMax(t, rules.minPlayers, rules.defaultBasePrice))}`}
+                </div>
               </div>
             </div>
           );

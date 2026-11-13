@@ -8,7 +8,16 @@ export interface Player {
 }
 export interface Team { name: string; color: string; purse: number; players: Player[]; }
 export interface LeagueConfig { name: string; year: string; logo: string; }
-export interface RulesConfig { totalPurse: number; minPlayers: number; bidStep: number; defaultBasePrice: number; }
+export interface RulesConfig {
+  totalPurse: number; minPlayers: number; bidStep: number; defaultBasePrice: number;
+  /** Squad size cap; 0 or missing = no cap. */
+  maxPlayers?: number;
+  /** Bigger raises at higher prices: from this current bid upward, raise by `step`. */
+  bidTiers?: BidTier[];
+  /** Seconds per "going once" / "going twice" stage before auto-SOLD. */
+  callSeconds?: number;
+}
+export interface BidTier { from: number; step: number; }
 export interface TeamDef { name: string; color: string; }
 export interface ColumnMap {
   name: string; photo: string; skills: string; address: string;

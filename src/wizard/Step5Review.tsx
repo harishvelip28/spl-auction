@@ -1,5 +1,5 @@
 import type { AuctionConfig } from "../types";
-import { fmt } from "../utils";
+import { fmt, callSecs } from "../utils";
 
 /* Step 5: Review */
 export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCount: number }) {
@@ -8,8 +8,9 @@ export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCo
     { label: "Teams",        value: `${cfg.teams.length} teams` },
     { label: "Players",      value: playerCount > 0 ? `${playerCount} players loaded` : "⚠ No players loaded (go back to Step 4)" },
     { label: "Purse / team", value: fmt(cfg.rules.totalPurse) },
-    { label: "Min players",  value: String(cfg.rules.minPlayers) },
-    { label: "Bid step",     value: fmt(cfg.rules.bidStep) },
+    { label: "Squad size",   value: `min ${cfg.rules.minPlayers}${cfg.rules.maxPlayers ? `, max ${cfg.rules.maxPlayers}` : ", no max"}` },
+    { label: "Bid step",     value: [fmt(cfg.rules.bidStep), ...[...(cfg.rules.bidTiers ?? [])].filter(t=>t.step>0).sort((a,b)=>a.from-b.from).map(t => `${fmt(t.step)} from ${fmt(t.from)}`)].join(" → ") },
+    { label: "Going once/twice", value: `${callSecs(cfg.rules)}s each, then SOLD` },
     { label: "Base price",   value: fmt(cfg.rules.defaultBasePrice) },
   ];
   return (

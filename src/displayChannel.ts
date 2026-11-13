@@ -3,7 +3,8 @@
 export type DisplayEvent =
   | { type: "sold"; player: string; team: string; color: string; price: number }
   | { type: "unsold"; player: string }
-  | { type: "reauction" };
+  | { type: "reauction" }
+  | { type: "going"; stage: 0 | 1 | 2 };
 
 const NAME = "spl-auction-display";
 

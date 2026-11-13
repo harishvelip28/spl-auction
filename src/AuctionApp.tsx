@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./types";
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE } from "./constants";
-import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax } from "./utils";
+import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -40,6 +40,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     return initState && p0 && p0.status === "available" && p0.currentBid > p0.basePrice
       ? [{ team: initState.selTeam, amount: p0.currentBid, at: Date.now() }] : [];
   });
+  // Auctioneer's call: 0 idle, 1 "going once", 2 "going twice" → then SOLD automatically.
+  const [going, setGoing] = useState<0 | 1 | 2>(0);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = React.useRef<number | undefined>(undefined);
   const notify = (msg: string) => {
@@ -79,25 +81,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids }, manualPlayers);
   const openDisplay = () => window.open(window.location.pathname + window.location.search + "#display", "spl-auction-display");
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
-      if (view !== "auction") return;
-      if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
-      if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
-      if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1); }
-      if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  });
-
   const p      = players[cur];
   const avail  = p?.status === "available";
   const lead   = bids.length ? bids[bids.length - 1] : null;
   const leadTeam = lead ? teams[lead.team] : null;
-  const nextBid  = !p ? 0 : lead ? p.currentBid + rules.bidStep : p.basePrice;
+  const nextBid  = !p ? 0 : lead ? p.currentBid + bidStepAt(p.currentBid, rules) : p.basePrice;
   const canLow = !!p && avail && bids.length > 0;
   const canUns = !!p && avail && bids.length === 0;
   const canNav = !p || !avail || bids.length === 0;
@@ -111,12 +99,14 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!p || !avail) return;
     const t = teams[i];
     if (lead?.team === i) { notify(`${t.name} already holds the bid at ${fmt(p.currentBid)}`); return; }
+    if (squadFull(t, rules)) { notify(`${t.name} already has the maximum ${rules.maxPlayers} players`); return; }
     if (!canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice)) {
       notify(`${t.name} cannot bid ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}`);
       return;
     }
     setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:nextBid } : pl));
     setBids(b => [...b, { team:i, amount:nextBid, at:Date.now() }]);
+    setGoing(0);
     setSelTeam(i);
     setBidKey(k => k+1);
   }
@@ -127,6 +117,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     const prev = rest[rest.length - 1];
     setPlayers(ps => ps.map((pl,k) => k===cur ? { ...pl, currentBid: prev ? prev.amount : pl.basePrice } : pl));
     setBids(rest);
+    setGoing(0);
     if (prev) setSelTeam(prev.team);
     setBidKey(k => k+1);
   }
@@ -134,7 +125,9 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!p || !avail) return;
     if (!lead || !leadTeam) { notify("No bids yet — click a team to place the opening bid."); return; }
     const bt = leadTeam, ti = lead.team;
+    setGoing(0);
     if (bt.purse < p.currentBid) { notify(`${bt.name} doesn't have enough purse (${fmt(bt.purse)})`); return; }
+    if (squadFull(bt, rules)) { notify(`${bt.name} already has the maximum ${rules.maxPlayers} players`); return; }
     setLastSnapshot({ players, teams, bids, activity });
     const upd: Player = { ...p, status:"sold", soldTo:bt.name, soldPrice:p.currentBid };
     setPlayers(prev => prev.map((pl,i) => i===cur ? upd : pl));
@@ -145,6 +138,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}`, teamColor:bt.color });
     sendDisplay({ type:"sold", player:p.name, team:bt.name, color:bt.color, price:p.currentBid });
     setTimeout(() => setOverlay(null), 2500);
+  }
+  /** Going once → going twice → SOLD. Pressing again skips ahead; a new bid cancels it. */
+  function callGoing() {
+    if (!p || !avail) return;
+    if (!lead) { notify("No bids yet — nothing to call."); return; }
+    if (going === 2) markSold(); else setGoing(going === 0 ? 1 : 2);
   }
   function markUnsold() {
     if (!p || !avail) return;
@@ -160,6 +159,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setPlayers(lastSnapshot.players);
     setTeams(lastSnapshot.teams);
     setBids(lastSnapshot.bids);
+    setGoing(0);
     setActivity(lastSnapshot.activity);
     setLastSnapshot(null);
     setOverlay(null);
@@ -198,7 +198,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!window.confirm("🔄 Reset all bids and team assignments?\n\nThis cannot be undone.")) return;
     const rp = players.map(pl => ({ ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined }));
     const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:[] }));
-    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]);
+    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]); setGoing(0);
   }
   function deletePlayer() {
     if (!p) return;
@@ -212,6 +212,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     const next = players.filter((_,i) => i!==cur);
     setPlayers(next);
     setBids([]);
+    setGoing(0);
     if (p.manuallyAdded) {
       const nm = manualPlayers.filter(mp => playerKey(mp)!==playerKey(p));
       setManualPlayers(nm); wrManual(nm);
@@ -248,6 +249,30 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const totalSpent = teams.reduce((a,t) => a + (rules.totalPurse - t.purse), 0);
   const highestBid = sold > 0 ? Math.max(...players.filter(p=>p.soldPrice).map(p=>p.soldPrice!)) : 0;
 
+  // Advance the call on a timer; any change to `going` (bid, retract, cancel) restarts or stops it.
+  useEffect(() => {
+    sendDisplay({ type:"going", stage:going });
+    if (!going) return;
+    const t = window.setTimeout(() => { if (going === 1) setGoing(2); else markSold(); }, callSecs(rules) * 1000);
+    return () => window.clearTimeout(t);
+  }, [going]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      if (view !== "auction") return;
+      if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
+      if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1); }
+      if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
+      if (e.key === "g" || e.key === "G") { e.preventDefault(); callGoing(); }
+      if (e.key === "Escape" && going) { e.preventDefault(); setGoing(0); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
   // ── RENDER ──────────────────────────────────────────────────────────────────
 
   return (
@@ -260,6 +285,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
         .pop  { animation: popIn .32s cubic-bezier(.34,1.56,.64,1) forwards; }
         .bidup{ animation: bidUp .22s ease forwards; }
         .puls { animation: pulse 1.4s infinite; }
+        @keyframes callbar { from{width:100%} to{width:0%} }
+        .callbar{ animation-name: callbar; animation-timing-function: linear; animation-fill-mode: forwards; }
         .cbtn { transition: opacity .15s, transform .1s; }
         .cbtn:hover:not(:disabled){ opacity:.82; }
         .cbtn:active:not(:disabled){ transform:scale(.96); }
@@ -433,6 +460,16 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         ) : (
                           <div style={{ marginTop:10, fontSize:14, color:"#4a6080", fontWeight:600 }}>Awaiting opening bid</div>
                         ))}
+                        {avail && going > 0 && (
+                          <div key={going} style={{ marginTop:10 }}>
+                            <div style={{ fontSize:18, fontWeight:900, letterSpacing:"2px", color: going===1 ? "#f0a030" : "#ff5f57" }}>
+                              {going===1 ? "GOING ONCE…" : "GOING TWICE…"}
+                            </div>
+                            <div style={{ height:4, background:"#111f3a", borderRadius:2, marginTop:6, overflow:"hidden" }}>
+                              <div className="callbar" style={{ height:"100%", background: going===1 ? "#f0a030" : "#ff5f57", animationDuration:`${callSecs(rules)}s` }} />
+                            </div>
+                          </div>
+                        )}
                         {avail && bids.length > 1 && (
                           <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:4 }}>
                             <div style={{ fontSize:11, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px" }}>Bid history</div>
@@ -477,11 +514,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
                   {teams.map((t,i) => {
                     const leading = lead?.team === i;
-                    const blocked = !!p && avail && !leading && !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice);
+                    const full = squadFull(t, rules);
+                    const blocked = !!p && avail && !leading && (full || !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice));
                     const hot = leading;
                     return (
                       <button key={t.name} onClick={()=>teamBid(i)} disabled={!p || !avail}
-                        title={blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
+                        title={full ? `${t.name} has the maximum ${rules.maxPlayers} players` : blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
                         style={{ padding:"10px 6px", borderRadius:12, border:`2px solid ${hot?t.color:"#1a2d50"}`, position:"relative",
                           background: hot?`${t.color}22`:"transparent", cursor: !p || !avail ? "default" : "pointer", opacity: blocked ? .35 : 1,
                           display:"flex", flexDirection:"column", alignItems:"center", gap:5,
@@ -497,8 +535,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         </div>
                         <span style={{ fontSize:12, fontWeight:700, color:hot?t.color:"#90a4d4", textAlign:"center", lineHeight:1.25, wordBreak:"break-word" }}>{t.name}</span>
                         <span style={{ fontSize:12, color:"#6a80aa", fontWeight:600 }}>{fmt(t.purse)}</span>
-                        <span style={{ fontSize:11, color:blocked?"#ff5f57":"#4a6080", fontWeight:600 }}>max {fmt(maxBid(t))}</span>
-                        <span style={{ fontSize:11, color:t.players.length>=rules.minPlayers?"#30d158":"#3d5070", fontWeight:700 }}>{t.players.length}/{rules.minPlayers}</span>
+                        <span style={{ fontSize:11, color:blocked?"#ff5f57":"#4a6080", fontWeight:600 }}>{full ? "SQUAD FULL" : `max ${fmt(maxBid(t))}`}</span>
+                        <span style={{ fontSize:11, color:t.players.length>=rules.minPlayers?"#30d158":"#3d5070", fontWeight:700 }}
+                          title={`min ${rules.minPlayers}${rules.maxPlayers ? `, max ${rules.maxPlayers}` : ""}`}>
+                          {t.players.length}/{rules.minPlayers}{rules.maxPlayers ? ` · ≤${rules.maxPlayers}` : ""}
+                        </span>
                       </button>
                     );
                   })}
@@ -511,6 +552,19 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   style={{ padding:"12px 0", borderRadius:10, border:"1px solid #1a2d50", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#90a4d4" }}>
                   ↶ Retract last bid
                 </button>
+                <div style={{ display:"grid", gridTemplateColumns: going ? "1fr auto" : "1fr", gap:8 }}>
+                  <button className="cbtn" onClick={callGoing} disabled={!avail || !leadTeam} title="Auctioneer's call — auto-SOLD at the end (key G, Esc cancels)"
+                    style={{ padding:"12px 0", borderRadius:10, border:`1px solid ${going?"#7a3a10":"#3a2800"}`, fontSize:15, fontWeight:800, cursor:"pointer",
+                      background: going ? "#2a1205" : "#1a1000", color: going===2 ? "#ff7a50" : "#f0a030" }}>
+                    {going===0 ? "🔨 Going once…" : going===1 ? "🔨 Going twice ▸" : "🔨 Sold now ▸"}
+                  </button>
+                  {going > 0 && (
+                    <button className="cbtn" onClick={()=>setGoing(0)} title="Cancel the call (Esc)"
+                      style={{ padding:"12px 14px", borderRadius:10, border:"1px solid #1a2d50", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#90a4d4" }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
                 <button className="cbtn" onClick={markSold} disabled={!avail || !leadTeam}
                   style={{ padding:"16px 0", borderRadius:10, border:"1px solid #1a4a2a", fontSize:20, fontWeight:900, cursor:"pointer", background:"#0a2818", color:"#30d158", letterSpacing:"2px" }}>
                   ✓ SOLD{leadTeam ? <span style={{ display:"block", fontSize:13, letterSpacing:0, fontWeight:700, marginTop:3, color:"#8fdca6" }}>to {leadTeam.name} · {fmt(p!.currentBid)}</span> : null}
