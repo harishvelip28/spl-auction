@@ -4,6 +4,8 @@ import type { TeamDef, ColumnMap, AuctionConfig } from "./types";
 export const CONFIG_KEY = "auction-config-v2";
 export const STATE_KEY  = "auction-state-v2";
 export const MANUAL_KEY = "auction-manual-v2";
+/** "1" while the console has put the auction summary on the projector. */
+export const SUMMARY_KEY = "auction-display-summary-v1";
 
 const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVKm1zcwXbaj8Ui3jQl_1fJPU-4ZN3G9V1Dd2vRX6rWdAlkInpTHj5VMrLVjjIsvVlD4SkPal7V3Xc/pub?gid=98031908&single=true&output=csv";
 

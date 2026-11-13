@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./types";
-import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE } from "./constants";
+import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY } from "./constants";
+import html2canvas from "html2canvas";
+import { AuctionSummary } from "./components/AuctionSummary";
 import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
@@ -11,6 +13,9 @@ import { AddPlayerModal } from "./components/AddPlayerModal";
 import { sendDisplay } from "./displayChannel";
 import { play, soundOn, setSoundOn } from "./sounds";
 import { ShortcutHelp } from "./components/ShortcutHelp";
+
+type View = "auction" | "players" | "summary";
+const readView = (): View => (window.location.hash === "#players" ? "players" : window.location.hash === "#summary" ? "summary" : "auction");
 
 export function AuctionApp({ config, initPlayers, onSetup, user }: {
   config: AuctionConfig;
@@ -63,15 +68,14 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   }, [initPlayers]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page: auction screen or full player list. Synced to the URL hash so browser Back works.
-  const readView = (): "auction" | "players" => (window.location.hash === "#players" ? "players" : "auction");
-  const [view, setView] = useState<"auction" | "players">(readView);
+  const [view, setView] = useState<View>(readView);
   useEffect(() => {
     const onHash = () => setView(readView());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
-  const goTo = (v: "auction" | "players") => {
-    if (v === "players") window.location.hash = "players";
+  const goTo = (v: View) => {
+    if (v !== "auction") window.location.hash = v;
     else history.pushState(null, "", window.location.pathname + window.location.search);
     setView(v);
     window.scrollTo(0, 0);
@@ -84,6 +88,23 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (ok) setSaveWarnClosed(false); // a later failure shows the warning again
   }, [players, teams, cur, selTeam, activity, bids]);
   const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids }, manualPlayers);
+  // Auction summary: shown on the projector while this flag is set (the display window watches localStorage).
+  const [summaryOnProj, setSummaryOnProj] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } });
+  const setProjSummary = (on: boolean) => {
+    setSummaryOnProj(on);
+    try { if (on) localStorage.setItem(SUMMARY_KEY, "1"); else localStorage.removeItem(SUMMARY_KEY); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
+  };
+  const summaryRef = React.useRef<HTMLDivElement>(null);
+  async function downloadSummary() {
+    if (!summaryRef.current) return;
+    try {
+      const canvas = await html2canvas(summaryRef.current, { backgroundColor:"#030710", scale:2, useCORS:true, logging:false });
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = `${config.league.name.replace(/[^\w]+/g, "_")}_auction_summary.png`;
+      a.click();
+    } catch { notify("Could not create the image."); }
+  }
   const openDisplay = () => window.open(window.location.pathname + window.location.search + "#display", "spl-auction-display");
 
   const p      = players[cur];
@@ -369,6 +390,18 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 </div>
               ))}
               <div style={{ display:"flex", gap:8, marginLeft:8 }}>
+                {summaryOnProj && view !== "summary" && (
+                  <button className="cbtn" onClick={()=>setProjSummary(false)} title="The projector is showing the summary — click to go back to the live auction"
+                    style={{ padding:"8px 12px", border:"1px solid #5c4400", borderRadius:8, fontSize:13, cursor:"pointer", fontWeight:800, background:"#2b1f00", color:"#f0c040" }}>
+                    📺 Summary on projector ✕
+                  </button>
+                )}
+                {view !== "summary" && (
+                  <button className="cbtn" onClick={()=>goTo("summary")} title="Auction summary: highlights and every squad"
+                    style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
+                    🏆 Summary
+                  </button>
+                )}
                 {view === "auction" ? (
                   <button className="cbtn" onClick={()=>goTo("players")}
                     style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
@@ -656,6 +689,28 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 ))}
               </div>
             </div>
+          </div>
+          )}
+
+          {/* ── SUMMARY PAGE ───────────────────────────────────────────────────── */}
+          {view === "summary" && (
+          <div style={{ borderTop:"1px solid #1a2d50", display:"flex", flexDirection:"column", flex:1 }}>
+            <div style={{ padding:"12px 18px", borderBottom:"1px solid #111f3a", background:"#06101e", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+              <span style={{ fontSize:13, color:"#4a6080", fontWeight:700, flex:1 }}>
+                {remaining > 0 ? `${remaining} players still to go — the summary updates as you sell.` : "Auction complete."}
+              </span>
+              <button className="cbtn" onClick={downloadSummary}
+                style={{ padding:"8px 14px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
+                📸 Download image
+              </button>
+              <button className="cbtn" onClick={()=>setProjSummary(!summaryOnProj)}
+                title={summaryOnProj ? "Put the live auction back on the projector" : "Show this summary on the 📺 projector window"}
+                style={{ padding:"8px 14px", border:`1px solid ${summaryOnProj ? "#1a4a2a" : "#1a2d50"}`, borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700,
+                  background: summaryOnProj ? "#0a2818" : "#111f3a", color: summaryOnProj ? "#30d158" : "#90a4d4" }}>
+                {summaryOnProj ? "📺 On projector — hide" : "📺 Show on projector"}
+              </button>
+            </div>
+            <AuctionSummary config={config} players={players} teams={teams} innerRef={summaryRef} />
           </div>
           )}
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import type React from "react";
 import type { AuctionConfig, AuctionState } from "./types";
-import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
+import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, SUMMARY_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
+import { AuctionSummary } from "./components/AuctionSummary";
 import { fmt, calcMax, squadFull, callSecs } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
@@ -16,6 +17,8 @@ const load = (): { cfg: AuctionConfig | null; st: AuctionState | null } => {
   return { cfg, st: cfg ? rdState(cfg, rdManual(cfg.rules.defaultBasePrice)) : null };
 };
 
+const readSummary = () => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } };
+
 const toggleFullscreen = () => {
   if (document.fullscreenElement) void document.exitFullscreen();
   else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -27,6 +30,7 @@ export function DisplayView() {
   const [{ cfg, st }, setData] = useState(load);
   const [event, setEvent] = useState<DisplayEvent | null>(null);
   const [going, setGoing] = useState<0 | 1 | 2>(0);
+  const [showSummary, setShowSummary] = useState(readSummary);
   // Random draw: the name currently showing in the roll, and whether it has landed.
   const [draw, setDraw] = useState<{ name: string; serial?: number; done: boolean } | null>(null);
 
@@ -56,6 +60,7 @@ export function DisplayView() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === null || e.key === STATE_KEY || e.key === CONFIG_KEY || e.key === MANUAL_KEY) setData(load());
+      if (e.key === null || e.key === SUMMARY_KEY) setShowSummary(readSummary());
     };
     window.addEventListener("storage", onStorage);
     let timer: number | undefined;
@@ -86,6 +91,23 @@ export function DisplayView() {
     return (
       <div style={{ ...page, alignItems:"center", justifyContent:"center", fontSize:28, color:"#4a6080" }}>
         Waiting for the auction to start…
+      </div>
+    );
+  }
+
+  const fsButton = !idle && (
+    <button onClick={toggleFullscreen} onDoubleClick={e => e.stopPropagation()} title="Fullscreen (F or double-click)"
+      style={{ position:"fixed", right:18, bottom:18, zIndex:20, padding:"10px 16px", borderRadius:10, border:"1px solid #2a3d6a",
+        background:"rgba(7,16,30,.9)", color:"#c0d4f0", fontSize:15, fontWeight:800, cursor:"pointer" }}>
+      {isFull ? "✕ Exit fullscreen" : "⛶ Fullscreen"}
+    </button>
+  );
+
+  if (showSummary) {
+    return (
+      <div style={{ ...page, cursor: idle ? "none" : "default" }}>
+        <AuctionSummary config={cfg} players={st.players} teams={st.teams} projector />
+        {fsButton}
       </div>
     );
   }
@@ -276,13 +298,7 @@ export function DisplayView() {
         })}
       </div>
 
-      {!idle && (
-        <button onClick={toggleFullscreen} onDoubleClick={e => e.stopPropagation()} title="Fullscreen (F or double-click)"
-          style={{ position:"fixed", right:18, bottom:18, zIndex:20, padding:"10px 16px", borderRadius:10, border:"1px solid #2a3d6a",
-            background:"rgba(7,16,30,.9)", color:"#c0d4f0", fontSize:15, fontWeight:800, cursor:"pointer" }}>
-          {isFull ? "✕ Exit fullscreen" : "⛶ Fullscreen"}
-        </button>
-      )}
+      {fsButton}
     </div>
   );
 }
