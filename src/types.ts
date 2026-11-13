@@ -18,6 +18,9 @@ export interface AuctionConfig {
   league: LeagueConfig; rules: RulesConfig; teams: TeamDef[];
   csv: { url: string; columnMap: Partial<ColumnMap>; };
 }
-export interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; activity?: ActivityEntry[]; }
+export interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; activity?: ActivityEntry[]; bids?: Bid[]; }
+
+/** One raise on the player currently on auction. `team` is the index into teams. */
+export interface Bid { team: number; amount: number; at: number; }
 
 export interface ActivityEntry { playerName: string; teamName: string; teamColor: string; price: number; soldAt: number; }

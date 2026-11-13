@@ -17,6 +17,7 @@ export function rdState(cfg: AuctionConfig, manual: Player[]): AuctionState|null
         : cfg.teams.map(t=>({...t,purse:cfg.rules.totalPurse,players:[]})),
       cur: st.cur??0, selTeam: st.selTeam??0,
       activity: Array.isArray(st.activity) ? st.activity : [],
+      bids: Array.isArray(st.bids) ? st.bids : undefined,
     };
   } catch { return null; }
 }

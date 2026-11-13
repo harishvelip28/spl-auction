@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import type { Status, Player, Team, AuctionConfig, ActivityEntry } from "./types";
+import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./types";
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE } from "./constants";
 import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
@@ -8,6 +8,7 @@ import { PhotoAvatar } from "./components/PhotoAvatar";
 import { UserBadge } from "./components/UserBadge";
 import { TeamRoster } from "./components/TeamRoster";
 import { AddPlayerModal } from "./components/AddPlayerModal";
+import { sendDisplay } from "./displayChannel";
 
 export function AuctionApp({ config, initPlayers, onSetup, user }: {
   config: AuctionConfig;
@@ -29,8 +30,23 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [bidKey,  setBidKey]   = useState(0);
   const [showRoster,    setShowRoster]    = useState(false);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[] } | null>(null);
   const [activity,      setActivity]      = useState<ActivityEntry[]>(() => initState?.activity ?? []);
+  const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[]; bids: Bid[]; activity: ActivityEntry[] } | null>(null);
+  // Bids on the player currently on auction. Older saves have no bid log: if their current
+  // player was already raised, treat the selected team as the bidder.
+  const [bids, setBids] = useState<Bid[]>(() => {
+    if (initState?.bids) return initState.bids;
+    const p0 = initState?.players[initState.cur];
+    return initState && p0 && p0.status === "available" && p0.currentBid > p0.basePrice
+      ? [{ team: initState.selTeam, amount: p0.currentBid, at: Date.now() }] : [];
+  });
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = React.useRef<number | undefined>(undefined);
+  const notify = (msg: string) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
+  };
   const [saveFailed,    setSaveFailed]    = useState(false);
   const [saveWarnClosed, setSaveWarnClosed] = useState(false);
 
@@ -56,11 +72,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
 
   // Persist state after every change so a crash/restart resumes exactly here
   useEffect(() => {
-    const ok = wrState({ players, teams, cur, selTeam, activity });
+    const ok = wrState({ players, teams, cur, selTeam, activity, bids });
     setSaveFailed(!ok);
     if (ok) setSaveWarnClosed(false); // a later failure shows the warning again
-  }, [players, teams, cur, selTeam, activity]);
-  const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity }, manualPlayers);
+  }, [players, teams, cur, selTeam, activity, bids]);
+  const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids }, manualPlayers);
+  const openDisplay = () => window.open(window.location.pathname + window.location.search + "#display", "spl-auction-display");
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -69,8 +86,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       if (view !== "auction") return;
       if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
-      if (e.key === "+" || e.key === "=") { e.preventDefault(); raiseBid(); }
-      if (e.key === "-") { e.preventDefault(); lowerBid(); }
+      if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1); }
+      if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -78,69 +95,77 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
 
   const p      = players[cur];
   const avail  = p?.status === "available";
-  const canLow = !!p && avail && p.currentBid > p.basePrice;
-  const canUns = !!p && avail && p.currentBid <= p.basePrice;
-  const canNav = !p || !avail || p.currentBid <= p.basePrice;
+  const lead   = bids.length ? bids[bids.length - 1] : null;
+  const leadTeam = lead ? teams[lead.team] : null;
+  const nextBid  = !p ? 0 : lead ? p.currentBid + rules.bidStep : p.basePrice;
+  const canLow = !!p && avail && bids.length > 0;
+  const canUns = !!p && avail && bids.length === 0;
+  const canNav = !p || !avail || bids.length === 0;
   const sold     = players.filter(x => x.status === "sold").length;
   const unsold   = players.filter(x => x.status === "unsold").length;
   const remaining = players.filter(x => x.status === "available").length;
+  const maxBid = (t: Team) => calcMax(t, rules.minPlayers, rules.defaultBasePrice);
 
-  function raiseBid() {
+  /** Team i raises its paddle: opening bid is the base price, then +bidStep each time. */
+  function teamBid(i: number) {
     if (!p || !avail) return;
-    const next = p.currentBid + rules.bidStep;
-    const bt = teams[selTeam];
-    if (!canAfford(bt, next, rules.minPlayers, rules.defaultBasePrice)) {
-      alert(`⚠️ ${bt.name} cannot afford ${fmt(next)}!\n\nPurse left: ${fmt(bt.purse)}\nMax bid: ${fmt(calcMax(bt, rules.minPlayers, rules.defaultBasePrice))}`);
+    const t = teams[i];
+    if (lead?.team === i) { notify(`${t.name} already holds the bid at ${fmt(p.currentBid)}`); return; }
+    if (!canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice)) {
+      notify(`${t.name} cannot bid ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}`);
       return;
     }
-    setPlayers(prev => prev.map((pl,i) => i===cur ? { ...pl, currentBid:next } : pl));
+    setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:nextBid } : pl));
+    setBids(b => [...b, { team:i, amount:nextBid, at:Date.now() }]);
+    setSelTeam(i);
     setBidKey(k => k+1);
   }
-  function lowerBid() {
-    if (!p || !avail) return;
-    const next = Math.max(p.basePrice, p.currentBid - rules.bidStep);
-    if (next === p.currentBid) return;
-    setPlayers(prev => prev.map((pl,i) => i===cur ? { ...pl, currentBid:next } : pl));
+  /** Take back the most recent bid (mistaken click, or the team withdraws it). */
+  function retractBid() {
+    if (!p || !avail || !bids.length) return;
+    const rest = bids.slice(0, -1);
+    const prev = rest[rest.length - 1];
+    setPlayers(ps => ps.map((pl,k) => k===cur ? { ...pl, currentBid: prev ? prev.amount : pl.basePrice } : pl));
+    setBids(rest);
+    if (prev) setSelTeam(prev.team);
     setBidKey(k => k+1);
   }
   function markSold() {
     if (!p || !avail) return;
-    const bt = teams[selTeam];
-    if (bt.purse < p.currentBid) { alert(`⚠️ ${bt.name} doesn't have enough purse!\nPurse: ${fmt(bt.purse)}\nBid: ${fmt(p.currentBid)}`); return; }
-    if (!canAfford(bt, p.currentBid, rules.minPlayers, rules.defaultBasePrice)) {
-      const needed = Math.max(0, rules.minPlayers - bt.players.length - 1);
-      if (!window.confirm(`⚠️ Warning: ${bt.name} won't have enough for ${needed} more required player(s).\n\nProceed anyway?`)) return;
-    }
-    setLastSnapshot({ players, teams });
+    if (!lead || !leadTeam) { notify("No bids yet — click a team to place the opening bid."); return; }
+    const bt = leadTeam, ti = lead.team;
+    if (bt.purse < p.currentBid) { notify(`${bt.name} doesn't have enough purse (${fmt(bt.purse)})`); return; }
+    setLastSnapshot({ players, teams, bids, activity });
     const upd: Player = { ...p, status:"sold", soldTo:bt.name, soldPrice:p.currentBid };
     setPlayers(prev => prev.map((pl,i) => i===cur ? upd : pl));
-    setTeams(prev => prev.map((t,i) => {
-      if (i!==selTeam) return t;
-      const ut = { ...t, purse:t.purse-p.currentBid, players:[...t.players, upd] };
-      if (ut.players.length === rules.minPlayers) setTimeout(() => alert(`🎉 ${ut.name} completed their team with ${rules.minPlayers} players!`), 2600);
-      return ut;
-    }));
+    setTeams(prev => prev.map((t,i) => i!==ti ? t : { ...t, purse:t.purse-p.currentBid, players:[...t.players, upd] }));
+    if (bt.players.length + 1 === rules.minPlayers) setTimeout(() => notify(`🎉 ${bt.name} completed their team with ${rules.minPlayers} players!`), 2600);
+    setBids([]);
     setActivity(prev => [{ playerName:p.name, teamName:bt.name, teamColor:bt.color, price:p.currentBid, soldAt:Date.now() }, ...prev].slice(0, 8));
     setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}`, teamColor:bt.color });
+    sendDisplay({ type:"sold", player:p.name, team:bt.name, color:bt.color, price:p.currentBid });
     setTimeout(() => setOverlay(null), 2500);
   }
   function markUnsold() {
     if (!p || !avail) return;
-    if (p.currentBid > p.basePrice) { alert("Cannot mark unsold after a bid increase."); return; }
-    setLastSnapshot({ players, teams });
+    if (bids.length) { notify("Cannot mark unsold after a bid — retract the bids first."); return; }
+    setLastSnapshot({ players, teams, bids, activity });
     setPlayers(prev => prev.map((pl,i) => i===cur ? { ...pl, status:"unsold" } : pl));
     setOverlay({ text:"UNSOLD" });
+    sendDisplay({ type:"unsold", player:p.name });
     setTimeout(() => setOverlay(null), 1500);
   }
   function undoLast() {
     if (!lastSnapshot) return;
     setPlayers(lastSnapshot.players);
     setTeams(lastSnapshot.teams);
+    setBids(lastSnapshot.bids);
+    setActivity(lastSnapshot.activity);
     setLastSnapshot(null);
     setOverlay(null);
   }
   function nextPlayer() {
-    if (!canNav) { alert("Cannot advance — bid is above base price. Mark player SOLD first."); return; }
+    if (!canNav) { notify("Bidding is open — mark the player SOLD (or retract the bids) first."); return; }
     const next = players.findIndex((x,i) => i>cur && x.status==="available");
     const fall = players.findIndex(x => x.status==="available");
     const idx  = next!==-1 ? next : fall;
@@ -151,18 +176,19 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       const fi = re.findIndex(pl => pl.status==="available");
       setPlayers(re); setCur(fi!==-1?fi:0);
       setOverlay({ text:"RE-AUCTION" });
+      sendDisplay({ type:"reauction" });
       setTimeout(() => setOverlay(null), 1800);
       return;
     }
-    alert("Auction complete. No available players left.");
+    notify("Auction complete. No available players left.");
   }
   function prevPlayer() {
-    if (!canNav) { alert("Cannot go back — bid is above base price. Mark player SOLD first."); return; }
+    if (!canNav) { notify("Bidding is open — mark the player SOLD (or retract the bids) first."); return; }
     let prev = -1;
     for (let i=cur-1; i>=0; i--) { if (players[i].status==="available") { prev=i; break; } }
     if (prev===-1) for (let i=players.length-1; i>=0; i--) { if (players[i].status==="available") { prev=i; break; } }
     if (prev !== -1) { setCur(prev); setOverlay(null); return; }
-    alert("No available players.");
+    notify("No available players.");
   }
   function openSetup() {
     if (!window.confirm("⚙ Open Setup while the auction is live?\n\nLaunching the auction again from Setup will reset all bids and team assignments.")) return;
@@ -172,7 +198,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!window.confirm("🔄 Reset all bids and team assignments?\n\nThis cannot be undone.")) return;
     const rp = players.map(pl => ({ ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined }));
     const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:[] }));
-    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null);
+    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]);
   }
   function deletePlayer() {
     if (!p) return;
@@ -185,6 +211,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!window.confirm(msg)) return;
     const next = players.filter((_,i) => i!==cur);
     setPlayers(next);
+    setBids([]);
     if (p.manuallyAdded) {
       const nm = manualPlayers.filter(mp => playerKey(mp)!==playerKey(p));
       setManualPlayers(nm); wrManual(nm);
@@ -200,13 +227,18 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       setManualPlayers(nm); wrManual(nm);
     }
   }
+  /** Put another player on the block — not allowed while bids are open on the current one. */
+  function selectPlayer(idx: number) {
+    if (idx !== cur && !canNav) { notify(`Bidding is open on ${p!.name} — mark SOLD (or retract the bids) first.`); return false; }
+    setCur(idx); setOverlay(null); return true;
+  }
   function jumpToSerial(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     const n = parseInt(search.trim(), 10);
     if (isNaN(n)) return;
     const idx = players.findIndex(x => x.serialNo === n);
-    if (idx !== -1) { setCur(idx); setOverlay(null); setSearch(""); goTo("auction"); }
-    else alert(`No player #${n} found.`);
+    if (idx === -1) { notify(`No player #${n} found.`); return; }
+    if (selectPlayer(idx)) { setSearch(""); goTo("auction"); }
   }
 
   const filtered = filter === "all" ? players
@@ -293,6 +325,10 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 <button className="cbtn" onClick={()=>setShowRoster(true)}
                   style={{ padding:"8px 16px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#111f3a", color:"#90a4d4" }}>
                   📋 Rosters
+                </button>
+                <button className="cbtn" onClick={openDisplay} title="Open the audience screen in a new window — drag it to the projector"
+                  style={{ padding:"8px 16px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
+                  📺 Display
                 </button>
                 <button className="cbtn" onClick={openSetup}
                   style={{ padding:"8px 14px", border:"1px solid #1a2d50", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#0a1528", color:"#6a80aa" }}>
@@ -388,6 +424,26 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         <div key={bidKey} className="bidup" style={{ fontSize:"clamp(34px, 3.6vw, 52px)", fontWeight:900, color:"#f0c040", lineHeight:1, letterSpacing:-1, textShadow:"0 0 30px rgba(240,192,64,.4)", wordBreak:"break-word" }}>
                           {fmt(p.currentBid)}
                         </div>
+                        {avail && (leadTeam ? (
+                          <div style={{ marginTop:10, display:"inline-flex", alignItems:"center", gap:8, padding:"5px 12px", borderRadius:20,
+                            background:`${leadTeam.color}22`, border:`1px solid ${leadTeam.color}88`, color:leadTeam.color, fontSize:15, fontWeight:800 }}>
+                            <span style={{ width:9, height:9, borderRadius:"50%", background:leadTeam.color }} />
+                            {leadTeam.name}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop:10, fontSize:14, color:"#4a6080", fontWeight:600 }}>Awaiting opening bid</div>
+                        ))}
+                        {avail && bids.length > 1 && (
+                          <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:4 }}>
+                            <div style={{ fontSize:11, color:"#3d5070", textTransform:"uppercase", letterSpacing:".8px" }}>Bid history</div>
+                            {bids.slice(0, -1).reverse().slice(0, 5).map((b, k) => (
+                              <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:10, fontSize:13, color:"#6a80aa" }}>
+                                <span style={{ color:teams[b.team]?.color, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{teams[b.team]?.name}</span>
+                                <span style={{ fontWeight:700 }}>{fmt(b.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {/* SOLD / UNSOLD overlay */}
@@ -414,55 +470,50 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
             <div style={{ display:"flex", flexDirection:"column", background:"#06101e" }}>
               {/* Team grid */}
               <div style={{ padding:"20px 18px 14px", borderBottom:"1px solid #1a2d50" }}>
-                <div style={{ fontSize:11, color:"#3d5070", textTransform:"uppercase", letterSpacing:"2px", fontWeight:700, marginBottom:14 }}>Select Buying Team</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14, gap:8 }}>
+                  <div style={{ fontSize:11, color:"#3d5070", textTransform:"uppercase", letterSpacing:"2px", fontWeight:700 }}>Team Bids</div>
+                  {p && avail && <div style={{ fontSize:12, color:"#6a80aa" }}>Next bid <b style={{ color:"#f0c040", fontSize:14 }}>{fmt(nextBid)}</b></div>}
+                </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
                   {teams.map((t,i) => {
-                    const danger = t.purse < rules.defaultBasePrice * Math.max(0, rules.minPlayers - t.players.length);
-                    const sel = selTeam === i;
+                    const leading = lead?.team === i;
+                    const blocked = !!p && avail && !leading && !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice);
+                    const hot = leading;
                     return (
-                      <button key={t.name} onClick={()=>setSelTeam(i)}
-                        style={{ padding:"10px 6px", borderRadius:12, border:`2px solid ${sel?t.color:"#1a2d50"}`,
-                          background: sel?`${t.color}11`:"transparent", cursor:"pointer",
-                          display:"flex", flexDirection:"column", alignItems:"center", gap:6,
-                          transition:"all .15s", boxShadow: sel?`0 0 18px ${t.color}44`:"none" }}>
-                        <div style={{ width:44, height:44, borderRadius:"50%",
+                      <button key={t.name} onClick={()=>teamBid(i)} disabled={!p || !avail}
+                        title={blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
+                        style={{ padding:"10px 6px", borderRadius:12, border:`2px solid ${hot?t.color:"#1a2d50"}`, position:"relative",
+                          background: hot?`${t.color}22`:"transparent", cursor: !p || !avail ? "default" : "pointer", opacity: blocked ? .35 : 1,
+                          display:"flex", flexDirection:"column", alignItems:"center", gap:5,
+                          transition:"all .15s", boxShadow: hot?`0 0 18px ${t.color}55`:"none" }}>
+                        {i < 9 && <span style={{ position:"absolute", top:5, left:7, fontSize:10, fontWeight:800, color:"#3d5070" }}>{i+1}</span>}
+                        {leading && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#050a14", background:t.color, borderRadius:6, padding:"1px 5px" }}>LEAD</span>}
+                        <div style={{ width:40, height:40, borderRadius:"50%",
                           background:`linear-gradient(135deg, ${t.color}22, ${t.color}55)`,
-                          border:`2px solid ${sel?t.color:t.color+"66"}`,
+                          border:`2px solid ${hot?t.color:t.color+"66"}`,
                           display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:15, fontWeight:900, color:t.color, flexShrink:0,
-                          boxShadow: sel?`0 0 14px ${t.color}66`:"none" }}>
+                          fontSize:14, fontWeight:900, color:t.color, flexShrink:0 }}>
                           {t.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
                         </div>
-                        <span style={{ fontSize:12, fontWeight:700, color:sel?t.color:"#6a80aa", textAlign:"center", lineHeight:1.3, wordBreak:"break-word" }}>{t.name}</span>
-                        <span style={{ fontSize:12, color:danger?"#ff5f57":"#4a6080", fontWeight:600 }}>{fmt(t.purse)}</span>
+                        <span style={{ fontSize:12, fontWeight:700, color:hot?t.color:"#90a4d4", textAlign:"center", lineHeight:1.25, wordBreak:"break-word" }}>{t.name}</span>
+                        <span style={{ fontSize:12, color:"#6a80aa", fontWeight:600 }}>{fmt(t.purse)}</span>
+                        <span style={{ fontSize:11, color:blocked?"#ff5f57":"#4a6080", fontWeight:600 }}>max {fmt(maxBid(t))}</span>
                         <span style={{ fontSize:11, color:t.players.length>=rules.minPlayers?"#30d158":"#3d5070", fontWeight:700 }}>{t.players.length}/{rules.minPlayers}</span>
                       </button>
                     );
                   })}
                 </div>
-                {p && avail && (
-                  <div style={{ marginTop:12, background:"#0a1528", border:"1px solid #1a2d50", borderRadius:8, padding:"8px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <span style={{ fontSize:13, color:"#4a6080" }}>Max bid for {teams[selTeam].name}</span>
-                    <span style={{ fontSize:15, fontWeight:800, color:"#90a4d4" }}>{fmt(calcMax(teams[selTeam], rules.minPlayers, rules.defaultBasePrice))}</span>
-                  </div>
-                )}
               </div>
 
               {/* Action buttons */}
               <div style={{ padding:"16px 18px", display:"flex", flexDirection:"column", gap:10 }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                  <button className="cbtn" onClick={lowerBid} disabled={!canLow}
-                    style={{ padding:"14px 0", borderRadius:10, border:"1px solid #1a2d50", fontSize:16, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#90a4d4" }}>
-                    − {fmt(rules.bidStep)}
-                  </button>
-                  <button className="cbtn" onClick={raiseBid} disabled={!avail}
-                    style={{ padding:"14px 0", borderRadius:10, border:"1px solid #2a3d6a", fontSize:16, fontWeight:800, cursor:"pointer", background:"#0f1f3a", color:"#90a4d4" }}>
-                    + {fmt(rules.bidStep)}
-                  </button>
-                </div>
-                <button className="cbtn" onClick={markSold} disabled={!avail}
-                  style={{ padding:"18px 0", borderRadius:10, border:"1px solid #1a4a2a", fontSize:20, fontWeight:900, cursor:"pointer", background:"#0a2818", color:"#30d158", letterSpacing:"2px" }}>
-                  ✓ SOLD
+                <button className="cbtn" onClick={retractBid} disabled={!canLow} title="Take back the last bid (key − or Backspace)"
+                  style={{ padding:"12px 0", borderRadius:10, border:"1px solid #1a2d50", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#90a4d4" }}>
+                  ↶ Retract last bid
+                </button>
+                <button className="cbtn" onClick={markSold} disabled={!avail || !leadTeam}
+                  style={{ padding:"16px 0", borderRadius:10, border:"1px solid #1a4a2a", fontSize:20, fontWeight:900, cursor:"pointer", background:"#0a2818", color:"#30d158", letterSpacing:"2px" }}>
+                  ✓ SOLD{leadTeam ? <span style={{ display:"block", fontSize:13, letterSpacing:0, fontWeight:700, marginTop:3, color:"#8fdca6" }}>to {leadTeam.name} · {fmt(p!.currentBid)}</span> : null}
                 </button>
                 <button className="cbtn" onClick={markUnsold} disabled={!canUns}
                   style={{ padding:"13px 0", borderRadius:10, border:"1px solid #3a1010", fontSize:16, fontWeight:800, cursor:"pointer", background:"#180808", color:"#ff5f57" }}>
@@ -587,7 +638,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                 const stLabel = isCur?"On Auction":pl.status==="sold"?"Sold":pl.status==="unsold"?"Unsold":"Available";
                 const tc = pl.soldTo ? teams.find(t=>t.name===pl.soldTo)?.color : undefined;
                 return (
-                  <div key={ri} className="prow" onClick={()=>{ setCur(ri); setOverlay(null); goTo("auction"); }}
+                  <div key={ri} className="prow" onClick={()=>{ if (selectPlayer(ri)) goTo("auction"); }}
                     style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 18px", borderBottom:"1px solid #0a1528", cursor:"pointer",
                       borderLeft:`3px solid ${isCur?"#f0c040":"transparent"}`, background:"transparent", transition:"background .12s" }}>
                     <PhotoAvatar photo={pl.photo} name={pl.name} size={36} />
@@ -616,6 +667,13 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
         </div>
       </div>
 
+      {toast && (
+        <div role="status" style={{ position:"fixed", left:"50%", bottom:24, transform:"translateX(-50%)", zIndex:50, maxWidth:"min(560px, calc(100vw - 32px))",
+          background:"#1a1000", border:"1px solid #5c4400", color:"#f0c040", padding:"12px 18px", borderRadius:10, fontSize:15, fontWeight:700,
+          boxShadow:"0 8px 30px rgba(0,0,0,.6)", textAlign:"center" }} onClick={()=>setToast(null)}>
+          {toast}
+        </div>
+      )}
       {showRoster   && <TeamRoster teams={teams} config={config} onClose={()=>setShowRoster(false)} />}
       {showAddPlayer && (
         <AddPlayerModal
