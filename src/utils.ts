@@ -1,4 +1,4 @@
-import type { Player, Team, ColumnMap, RulesConfig } from "./types";
+import type { Player, Team, ColumnMap, RulesConfig, Bid } from "./types";
 
 export const fmt = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
 export const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -137,4 +137,19 @@ export function parseCSVText(text: string, map: Partial<ColumnMap>, minBase: num
 export async function fetchPlayers(url: string, map: Partial<ColumnMap>, minBase: number): Promise<Player[]> {
   const r = await fetch(url); const t = await r.text();
   return parseCSVText(t, map, minBase);
+}
+
+/** Bids that must go back and forth between the same two teams before it counts as a bid war. */
+export const BID_WAR_MIN = 4;
+
+/** A bid war: the latest bids alternate between exactly two teams (A, B, A, B, …).
+    `a` started the run, `b` holds the bid now; `from` is the first amount in the run. */
+export function bidWar(bids: Bid[]): { a: number; b: number; count: number; from: number } | null {
+  const n = bids.length;
+  if (n < BID_WAR_MIN) return null;
+  const last = bids[n - 1].team, prev = bids[n - 2].team;
+  if (last === prev) return null;
+  let k = 0;
+  while (k < n && bids[n - 1 - k].team === (k % 2 === 0 ? last : prev)) k++;
+  return k >= BID_WAR_MIN ? { a: prev, b: last, count: k, from: bids[n - k].amount } : null;
 }

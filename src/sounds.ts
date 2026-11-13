@@ -68,7 +68,7 @@ function gavel(c: AudioContext, at: number, vol = 0.9) {
   tone(c, 140, at, 0.2, "sine", vol * 0.9, 55);
 }
 
-export type Sound = "bid" | "once" | "twice" | "sold" | "unsold" | "draw";
+export type Sound = "bid" | "war" | "once" | "twice" | "sold" | "unsold" | "draw";
 
 export function play(s: Sound) {
   if (!soundOn()) return;
@@ -79,6 +79,10 @@ export function play(s: Sound) {
     case "bid":
       tone(c, 880, t, 0.12, "triangle", 0.22);
       tone(c, 1320, t + 0.06, 0.18, "triangle", 0.18);
+      break;
+    case "war":   // two rising sweeps when a bid war breaks out
+      tone(c, 440, t, 0.22, "sawtooth", 0.1, 880);
+      tone(c, 554, t + 0.24, 0.3, "sawtooth", 0.1, 1108);
       break;
     case "once":
       bell(c, 660, t);
