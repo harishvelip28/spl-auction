@@ -7,6 +7,7 @@ import { mergePlayers, fetchPlayers } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { SetupWizard } from "./wizard/SetupWizard";
 import { AuctionApp } from "./AuctionApp";
+import { DisplayView } from "./DisplayView";
 
 export default function App() {
   const [config,  setConfig]  = useState<AuctionConfig|null>(() => rdCfg());
@@ -16,8 +17,10 @@ export default function App() {
 
   // Public downloads page at /#downloads — reachable without logging in.
   const [showDownloads, setShowDownloads] = useState(() => window.location.hash === "#downloads");
+  // Projector screen at /#display — opened from the console, follows it live.
+  const [showDisplay, setShowDisplay] = useState(() => window.location.hash === "#display");
   useEffect(() => {
-    const onHash = () => setShowDownloads(window.location.hash === "#downloads");
+    const onHash = () => { setShowDownloads(window.location.hash === "#downloads"); setShowDisplay(window.location.hash === "#display"); };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -44,6 +47,7 @@ export default function App() {
 
   if (showDownloads) return <Downloads onBack={leaveDownloads} />;
   if (!user) return <Login onLogin={setUser} />;
+  if (showDisplay) return <DisplayView />;
   if (!config || showSetup) {
     return <SetupWizard existingConfig={config} onLaunch={handleLaunch} user={user} />;
   }

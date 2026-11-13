@@ -1,4 +1,4 @@
-import type { Player, Team, ColumnMap } from "./types";
+import type { Player, Team, ColumnMap, RulesConfig } from "./types";
 
 export const fmt = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
 export const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -65,6 +65,15 @@ export function timeAgo(ts: number): string {
 export function canAfford(t: Team, bid: number, min: number, base: number) {
   return t.purse - bid >= Math.max(0, min - t.players.length - 1) * base;
 }
+/** Raise size when the current bid is `amount`: the base bid step, or the highest tier reached. */
+export function bidStepAt(amount: number, rules: RulesConfig) {
+  let step = rules.bidStep;
+  for (const t of [...(rules.bidTiers ?? [])].sort((a, b) => a.from - b.from)) if (amount >= t.from && t.step > 0) step = t.step;
+  return step;
+}
+export const squadFull = (t: Team, rules: RulesConfig) => !!rules.maxPlayers && t.players.length >= rules.maxPlayers;
+/** Seconds per going-once/twice stage; 0 = manual (the auctioneer advances each stage). */
+export const callSecs = (rules: RulesConfig) => Math.max(0, rules.callSeconds ?? 5);
 export function calcMax(t: Team, min: number, base: number) {
   return t.purse - Math.max(0, min - t.players.length - 1) * base;
 }
