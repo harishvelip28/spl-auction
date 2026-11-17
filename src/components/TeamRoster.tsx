@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import html2canvas from "html2canvas";
 import type { Team, AuctionConfig } from "../types";
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE } from "../constants";
-import { fmt } from "../utils";
+import { fmt, calcMax, squadFull } from "../utils";
 import { PhotoAvatar } from "./PhotoAvatar";
 import { buildTeamsDoc, buildTeamsPdf, safeFileName } from "../export";
 
@@ -84,7 +84,7 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
             { label:"Players",     val:`${team.players.length}/${minPlayers} min`,                      color:team.players.length>=minPlayers?"#30d158":"#f0c040" },
             { label:"Purse spent", val:fmt(spent),                                                      color:"#f0c040" },
             { label:"Purse left",  val:fmt(team.purse),                                                 color:team.purse<1000?"#ff5f57":"#30d158" },
-            { label:"Avg bid",     val:team.players.length?fmt(Math.round(spent/team.players.length)):"—", color:"#90a4d4" },
+            { label:"Max bid",     val:squadFull(team, config.rules)?"Squad full":fmt(calcMax(team, minPlayers, config.rules.defaultBasePrice)), color:squadFull(team, config.rules)?"#ff5f57":"#f0c040" },
           ].map(s => (
             <div key={s.label} style={{ textAlign:"center", minWidth:90 }}>
               <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.val}</div>
