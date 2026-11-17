@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { getInitials, driveUrls } from "../utils";
+import { getInitials, driveUrls, photoPreviewUrl } from "../utils";
 
 export function PhotoAvatar({ photo, name, card, size }: { photo:string; name:string; card?:boolean; size?:number }) {
   const urls = driveUrls(photo);
@@ -21,6 +21,16 @@ export function PhotoAvatar({ photo, name, card, size }: { photo:string; name:st
     position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
     fontSize: card ? 72 : sz!>36?18:13, fontWeight:800, color:"#f0c040",
   };
+  // Every image URL failed (typically a PDF upload): on the big cards, fall back to Drive's preview
+  // viewer, which can render a PDF's first page. Too small to be useful in the round list avatars.
+  const preview = card && urls.length && idx >= urls.length ? photoPreviewUrl(photo) : "";
+  if (preview) return (
+    <div style={wrap}>
+      <span style={iniS}>{ini}</span>
+      <iframe key={preview} src={preview} title={name} referrerPolicy="no-referrer" loading="lazy"
+        style={{ position:"absolute", inset:0, width:"100%", height:"100%", border:"none", background:"#06101e", pointerEvents:"none" }} />
+    </div>
+  );
   if (!urls.length || idx >= urls.length) return <div style={wrap}><span style={iniS}>{ini}</span></div>;
   return (
     <div style={wrap}>

@@ -3,7 +3,7 @@ import type { Player, ColumnMap, RulesConfig, Bid } from "./types";
 export const fmt = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
 export const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
-function driveId(url: string) {
+export function driveId(url: string) {
   for (const p of [/\/file\/d\/([a-zA-Z0-9_-]{10,})/, /[?&]id=([a-zA-Z0-9_-]{10,})/, /\/open\?id=([a-zA-Z0-9_-]{10,})/]) {
     const m = url.match(p); if (m) return m[1];
   }
@@ -18,6 +18,14 @@ export function driveUrls(raw: string): string[] {
     `https://lh3.googleusercontent.com/d/${id}=w400`,
   ];
   return [raw];
+}
+/** Last-resort viewer for photos an <img> can't draw — e.g. a player who uploaded a PDF to the Google Form.
+    Drive's own preview page renders PDFs (and anything else Drive can show) inside an iframe. */
+export function photoPreviewUrl(raw: string): string {
+  if (!raw?.trim()) return "";
+  const id = driveId(raw);
+  if (id) return `https://drive.google.com/file/d/${id}/preview`;
+  return /\.pdf(\?|#|$)/i.test(raw.trim()) ? raw.trim() : "";
 }
 function parseRow(row: string): string[] {
   const r: string[] = []; let cur = "", q = false;
