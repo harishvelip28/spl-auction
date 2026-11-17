@@ -34,7 +34,7 @@ export interface AuctionState { players: Player[]; teams: Team[]; cur: number; s
 export interface Tie { at: number; teams: number[]; }
 
 /** One raise on the player currently on auction. `team` is the index into teams. */
-export interface Bid { team: number; amount: number; at: number; }
+export interface Bid { team: number; amount: number; at: number; /** Called straight to an amount instead of the next step. */ jump?: boolean; }
 
 export interface ActivityEntry {
   playerName: string; teamName: string; teamColor: string; price: number; soldAt: number;

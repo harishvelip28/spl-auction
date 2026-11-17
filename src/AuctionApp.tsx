@@ -50,6 +50,9 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     return initState && p0 && p0.status === "available" && p0.currentBid > p0.basePrice
       ? [{ team: initState.selTeam, amount: p0.currentBid, at: Date.now() }] : [];
   });
+  // Direct bid: an amount typed by the operator; the next team clicked bids exactly this instead of the next step.
+  const [jumpTxt, setJumpTxt] = useState("");
+  const jumpRef = React.useRef<HTMLInputElement>(null);
   // Tie: teams that pressed MATCH because the leading bid is also their maximum (see teamBid).
   const [tie, setTie] = useState<Tie | undefined>(() => initState?.tie);
   // Tie-break draw in progress on the console: the team name showing in the roll, and whether it has landed.
@@ -144,6 +147,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const unsold   = players.filter(x => x.status === "unsold").length;
   const remaining = players.filter(x => x.status === "available").length;
   const maxBid = (t: Team) => calcMax(t, rules.minPlayers, rules.defaultBasePrice);
+  const jumpAmt = parseInt(jumpTxt.replace(/[^\d]/g, ""), 10) || 0;
+  const jumpOk = jumpAmt > 0 && jumpAmt >= nextBid;
   // Tie: the leader holds a bid that is also the maximum for these teams, so they matched it instead of raising.
   const matched = avail ? tiedTeams(tie, bids) : [];
   /** Team i can MATCH the leading bid: it can pay the current bid but not the next raise. */
@@ -152,10 +157,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     && !canAfford(teams[i], nextBid, rules.minPlayers, rules.defaultBasePrice);
 
   /** Team i raises its paddle: opening bid is the base price, then +bidStep each time. */
-  function teamBid(i: number) {
+  /** Team i bids: the next step up, or `jump` when the operator typed a direct amount. */
+  function teamBid(i: number, jump?: number) {
     if (!p || !avail || roll) return;
     const t = teams[i];
-    if (matched.includes(i)) {   // pressing a matched team again withdraws its match
+    if (matched.includes(i) && !jump) {   // pressing a matched team again withdraws its match
       const rest = matched.filter(x => x !== i);
       setTie(rest.length ? { at: lead!.at, teams: rest } : undefined);
       notify(`${t.name} withdrew the match`);
@@ -164,6 +170,14 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     // The leader may raise to break a tie; otherwise it already holds the bid.
     if (lead?.team === i && !matched.length) { notify(`${t.name} already holds the bid at ${fmt(p.currentBid)}`); return; }
     if (squadFull(t, rules)) { notify(`${t.name} already has the maximum ${rules.maxPlayers} players`); return; }
+    if (jump) {
+      if (jump < nextBid) { notify(`A direct bid must be at least ${fmt(nextBid)}${lead ? ` (current bid ${fmt(p.currentBid)})` : " (base price)"}.`); return; }
+      if (!canAfford(t, jump, rules.minPlayers, rules.defaultBasePrice)) { notify(`${t.name} cannot bid ${fmt(jump)} — max bid is ${fmt(maxBid(t))}`); return; }
+      placeBid(i, jump, true);
+      setJumpTxt("");
+      notify(`⚡ ${t.name} jumps to ${fmt(jump)}`);
+      return;
+    }
     if (!canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice)) {
       if (canMatch(i)) {
         // The current bid is this team's maximum too: it can't raise, so it matches → tie.
@@ -178,8 +192,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
         : `${t.name} cannot bid ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}`);
       return;
     }
-    setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:nextBid } : pl));
-    const nb = [...bids, { team:i, amount:nextBid, at:Date.now() }];
+    placeBid(i, nextBid);
+  }
+  function placeBid(i: number, amount: number, jump = false) {
+    setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:amount } : pl));
+    const nb = [...bids, { team:i, amount, at:Date.now(), ...(jump ? { jump } : {}) }];
     setBids(nb);
     setGoing(0);
     setSelTeam(i);
@@ -223,6 +240,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (bt.players.length + 1 === rules.minPlayers) setTimeout(() => notify(`🎉 ${bt.name} completed their team with ${rules.minPlayers} players!`), 2600);
     setBids([]);
     setTie(undefined);
+    setJumpTxt("");
     setActivity(prev => [{ playerName:p.name, teamName:bt.name, teamColor:bt.color, price:p.currentBid, soldAt:Date.now(), ...(draw ? { draw } : {}) }, ...prev].slice(0, 8));
     setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}${draw ? "  ·  🎲 won the draw" : ""}`, teamColor:bt.color });
     sendDisplay({ type:"sold", player:p.name, team:bt.name, color:bt.color, price:p.currentBid });
@@ -241,6 +259,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (bids.length) { notify("Cannot mark unsold after a bid — retract the bids first."); return; }
     setLastSnapshot({ players, teams, bids, activity });
     setPlayers(prev => prev.map((pl,i) => i===cur ? { ...pl, status:"unsold" } : pl));
+    setJumpTxt("");
     setOverlay({ text:"UNSOLD" });
     sendDisplay({ type:"unsold", player:p.name });
     play("unsold");
@@ -410,7 +429,8 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       if (view !== "auction") return;
       if (e.key === "ArrowRight") { e.preventDefault(); nextPlayer(); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); prevPlayer(); }
-      if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1); }
+      if (/^[1-9]$/.test(e.key) && Number(e.key) <= teams.length) { e.preventDefault(); teamBid(Number(e.key) - 1, jumpAmt || undefined); }
+      if ((e.key === "b" || e.key === "B") && avail) { e.preventDefault(); jumpRef.current?.focus(); }
       if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); callGoing(); }
       if (e.key === "r" || e.key === "R") { e.preventDefault(); randomPlayer(); }
@@ -670,7 +690,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                             {bids.slice(0, -1).reverse().slice(0, 5).map((b, k) => (
                               <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:10, fontSize:13, color:"#6a80aa" }}>
                                 <span style={{ color:teams[b.team]?.color, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{teams[b.team]?.name}</span>
-                                <span style={{ fontWeight:700 }}>{fmt(b.amount)}</span>
+                                <span style={{ fontWeight:700 }}>{b.jump ? "⚡ " : ""}{fmt(b.amount)}</span>
                               </div>
                             ))}
                           </div>
@@ -716,24 +736,47 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   <div style={{ fontSize:11, color:"#3d5070", textTransform:"uppercase", letterSpacing:"2px", fontWeight:700 }}>Team Bids</div>
                   {p && avail && <div style={{ fontSize:12, color:"#6a80aa" }}>Next bid <b style={{ color:"#f0c040", fontSize:14 }}>{fmt(nextBid)}</b></div>}
                 </div>
+                {p && avail && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                    <label htmlFor="jump-bid" style={{ fontSize:12, color:"#6a80aa", fontWeight:700, whiteSpace:"nowrap" }}>⚡ Direct bid ₹</label>
+                    <input id="jump-bid" ref={jumpRef} value={jumpTxt} inputMode="numeric" placeholder={`e.g. ${nextBid * 2}`}
+                      onChange={e => setJumpTxt(e.target.value.replace(/[^\d]/g, ""))}
+                      onKeyDown={e => {
+                        if (e.key === "Escape") { setJumpTxt(""); e.currentTarget.blur(); }
+                        if (e.key === "Enter") e.currentTarget.blur();   // then a team key (1–9) or click places it
+                      }}
+                      title="Type an amount, then click a team (or press its number) to bid exactly that. Key B jumps here; Esc clears."
+                      style={{ flex:1, minWidth:0, background:"#0a1428", border:`1px solid ${jumpTxt ? (jumpOk ? "#f0c040" : "#ff5f57") : "#1a2d50"}`, borderRadius:8, padding:"7px 10px", fontSize:15, fontWeight:800, color:"#fff", outline:"none" }} />
+                    {jumpTxt && <button className="cbtn" onClick={() => setJumpTxt("")} title="Clear (Esc)"
+                      style={{ padding:"6px 10px", borderRadius:8, border:"1px solid #1a2d50", background:"#0c1830", color:"#90a4d4", fontWeight:800, cursor:"pointer" }}>✕</button>}
+                  </div>
+                )}
+                {p && avail && jumpTxt && (
+                  <div style={{ fontSize:12, fontWeight:700, marginTop:-6, marginBottom:10, color: jumpOk ? "#f0c040" : "#ff5f57" }}>
+                    {jumpOk ? `Click a team to bid ${fmt(jumpAmt)}` : `Must be at least ${fmt(nextBid)}`}
+                  </div>
+                )}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
                   {teams.map((t,i) => {
                     const leading = lead?.team === i;
                     const full = squadFull(t, rules);
                     const isMatched = matched.includes(i);
                     const matchable = !isMatched && canMatch(i);
-                    const blocked = !!p && avail && !leading && !isMatched && !matchable && (full || !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice));
+                    const bidAmt = jumpOk ? jumpAmt : nextBid;
+                    const blocked = !!p && avail && !leading && (jumpOk
+                      ? full || !canAfford(t, jumpAmt, rules.minPlayers, rules.defaultBasePrice)
+                      : !isMatched && !matchable && (full || !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice)));
                     const hot = leading || isMatched;
                     return (
-                      <button key={t.name} onClick={()=>teamBid(i)} disabled={!p || !avail || !!roll}
-                        title={isMatched ? `${t.name} matched ${fmt(p!.currentBid)} — click to withdraw the match` : matchable ? `${fmt(p!.currentBid)} is ${t.name}'s maximum too — click to MATCH (tie) (key ${i+1})` : full ? `${t.name} has the maximum ${rules.maxPlayers} players` : blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
+                      <button key={t.name} onClick={()=>teamBid(i, jumpAmt || undefined)} disabled={!p || !avail || !!roll}
+                        title={jumpOk && !leading ? (blocked ? `${t.name} cannot bid ${fmt(jumpAmt)} (max ${fmt(maxBid(t))})` : `Direct bid ${fmt(jumpAmt)} for ${t.name} (key ${i+1})`) : isMatched ? `${t.name} matched ${fmt(p!.currentBid)} — click to withdraw the match` : matchable ? `${fmt(p!.currentBid)} is ${t.name}'s maximum too — click to MATCH (tie) (key ${i+1})` : full ? `${t.name} has the maximum ${rules.maxPlayers} players` : blocked ? `${t.name} cannot bid ${fmt(bidAmt)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(bidAmt)} for ${t.name} (key ${i+1})`}
                         style={{ padding:"10px 6px", borderRadius:12, border:`2px solid ${hot?t.color:"#1a2d50"}`, position:"relative",
                           background: hot?`${t.color}22`:"transparent", cursor: !p || !avail ? "default" : "pointer", opacity: blocked ? .35 : 1,
                           display:"flex", flexDirection:"column", alignItems:"center", gap:5,
                           transition:"all .15s", boxShadow: hot?`0 0 18px ${t.color}55`:"none" }}>
                         {i < 9 && <span style={{ position:"absolute", top:5, left:7, fontSize:10, fontWeight:800, color:"#3d5070" }}>{i+1}</span>}
                         {(leading || isMatched) && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#050a14", background:t.color, borderRadius:6, padding:"1px 5px" }}>{leading && !matched.length ? "LEAD" : "TIE"}</span>}
-                        {matchable && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#f0c040", border:"1px solid #8a6a10", borderRadius:6, padding:"0 4px" }}>MATCH?</span>}
+                        {matchable && !jumpOk && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#f0c040", border:"1px solid #8a6a10", borderRadius:6, padding:"0 4px" }}>MATCH?</span>}
                         <div style={{ width:40, height:40, borderRadius:"50%",
                           background:`linear-gradient(135deg, ${t.color}22, ${t.color}55)`,
                           border:`2px solid ${hot?t.color:t.color+"66"}`,

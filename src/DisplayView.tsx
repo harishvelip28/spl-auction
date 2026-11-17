@@ -270,7 +270,7 @@ export function DisplayView() {
                   const t = st.teams[b.team];
                   return (
                     <span key={k} style={{ fontSize:15, padding:"5px 12px", borderRadius:20, background:"#0a1528", border:`1px solid ${t?.color ?? "#1a2d50"}55`, color:"#90a4d4", fontWeight:700 }}>
-                      <span style={{ color:t?.color }}>{t?.name}</span> · {fmt(b.amount)}
+                      <span style={{ color:t?.color }}>{t?.name}</span> · {b.jump ? "⚡ " : ""}{fmt(b.amount)}
                     </span>
                   );
                 })}
