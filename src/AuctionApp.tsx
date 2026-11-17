@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid, Tie } from "./types";
-import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY } from "./constants";
+import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY, TEAMS_KEY } from "./constants";
 import html2canvas from "html2canvas";
 import { AuctionSummary } from "./components/AuctionSummary";
 import { LiveShare, type LiveStatus } from "./components/LiveShare";
@@ -102,8 +102,16 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [summaryOnProj, setSummaryOnProj] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } });
   const setProjSummary = (on: boolean) => {
     setSummaryOnProj(on);
+    if (on) setProjTeams(false);
     try { if (on) localStorage.setItem(SUMMARY_KEY, "1"); else localStorage.removeItem(SUMMARY_KEY); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
   };
+  // Team view: the projector cycles through every squad (it steps aside by itself while bids are open).
+  const [teamsOnProj, setTeamsOnProj] = useState(() => { try { return localStorage.getItem(TEAMS_KEY) === "1"; } catch { return false; } });
+  function setProjTeams(on: boolean) {
+    setTeamsOnProj(on);
+    if (on && summaryOnProj) { setSummaryOnProj(false); try { localStorage.removeItem(SUMMARY_KEY); } catch { /* ignore */ } }
+    try { if (on) localStorage.setItem(TEAMS_KEY, "1"); else localStorage.removeItem(TEAMS_KEY); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
+  }
   const summaryRef = React.useRef<HTMLDivElement>(null);
   async function downloadSummary() {
     if (!summaryRef.current) return;
@@ -415,6 +423,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       if (e.key === "g" || e.key === "G") { e.preventDefault(); callGoing(); }
       if (e.key === "r" || e.key === "R") { e.preventDefault(); randomPlayer(); }
       if (e.key === "d" || e.key === "D") { e.preventDefault(); drawTie(); }
+      if (e.key === "t" || e.key === "T") { e.preventDefault(); setProjTeams(!teamsOnProj); notify(teamsOnProj ? "📺 Projector: live auction" : "📺 Projector: cycling team squads"); }
       if (e.key === "Escape" && going) { e.preventDefault(); setGoing(0); }
     };
     window.addEventListener("keydown", handler);
@@ -519,6 +528,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   style={{ padding:"8px 14px", border:`1px solid ${share?.on ? (liveStatus.ok ? "#1a4a2a" : "#5a1010") : "#1a2d50"}`, borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700,
                     background: share?.on ? (liveStatus.ok ? "#0a2818" : "#2a0a0a") : "#111f3a", color: share?.on ? (liveStatus.ok ? "#30d158" : "#ff8a80") : "#90a4d4" }}>
                   📱 Owners{share?.on ? (liveStatus.ok ? " ●" : " ⚠") : ""}
+                </button>
+                <button className="cbtn" onClick={()=>setProjTeams(!teamsOnProj)}
+                  title={teamsOnProj ? "Projector is cycling team squads — click to show the live auction (key T)" : "Cycle every team's squad on the projector between players (key T). It steps aside while bids are open."}
+                  style={{ padding:"8px 14px", border:`1px solid ${teamsOnProj ? "#1a4a2a" : "#1a2d50"}`, borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700,
+                    background: teamsOnProj ? "#0a2818" : "#111f3a", color: teamsOnProj ? "#30d158" : "#90a4d4" }}>
+                  👥 Teams{teamsOnProj ? " on projector ✕" : ""}
                 </button>
                 <button className="cbtn" onClick={openDisplay} title="Open the audience screen in a new window — drag it to the projector"
                   style={{ padding:"8px 16px", border:"1px solid #3a2800", borderRadius:8, fontSize:14, cursor:"pointer", fontWeight:700, background:"#2b1f00", color:"#f0c040" }}>
