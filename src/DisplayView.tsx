@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import type React from "react";
 import type { AuctionConfig, AuctionState } from "./types";
 import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, SUMMARY_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
 import { AuctionSummary } from "./components/AuctionSummary";
-import { fmt, calcMax, squadFull, callSecs, bidWar, BID_WAR_MIN } from "./utils";
+import { fmt, calcMax, squadFull, callSecs, bidWar, BID_WAR_MIN, tiedTeams } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -32,7 +32,7 @@ export function DisplayView() {
   const [going, setGoing] = useState<0 | 1 | 2>(0);
   const [showSummary, setShowSummary] = useState(readSummary);
   // Random draw: the name currently showing in the roll, and whether it has landed.
-  const [draw, setDraw] = useState<{ name: string; serial?: number; done: boolean } | null>(null);
+  const [draw, setDraw] = useState<{ name: string; serial?: number; done: boolean; title?: string; color?: string } | null>(null);
 
   // Fullscreen (button, F key or double-click) and an auto-hiding cursor/button for the projector.
   const [isFull, setIsFull] = useState(() => !!document.fullscreenElement);
@@ -74,7 +74,7 @@ export function DisplayView() {
         setEvent(null);
         const last = DRAW_STEPS.length - 1;
         rolls = DRAW_STEPS.map((ms, k) => window.setTimeout(() =>
-          setDraw(k === last ? { name: e.player, serial: e.serial, done: true } : { name: e.names[k % e.names.length], done: false }), ms));
+          setDraw(k === last ? { name: e.player, serial: e.serial, done: true, title: e.title, color: e.color } : { name: e.names[k % e.names.length], done: false, title: e.title }), ms));
         rolls.push(window.setTimeout(() => setDraw(null), DRAW_END + 1100));
         return;
       }
@@ -118,6 +118,7 @@ export function DisplayView() {
   const lead = bids.length ? bids[bids.length - 1] : null;
   const leadTeam = lead ? st.teams[lead.team] : null;
   const war = p?.status === "available" ? bidWar(bids) : null;
+  const tied = p?.status === "available" ? tiedTeams(st.tie, bids) : [];
   const warA = war ? st.teams[war.a] : undefined, warB = war ? st.teams[war.b] : undefined;
   const avail = p?.status === "available";
   const sold = st.players.filter(x => x.status === "sold").length;
@@ -212,6 +213,21 @@ export function DisplayView() {
               <div style={{ fontSize:24, color:"#4a6080", fontWeight:700 }}>Awaiting opening bid…</div>
             ))}
 
+            {lead && tied.length > 0 && (
+              <div className="dv-pop" style={{ alignSelf:"flex-start", maxWidth:"100%", padding:"12px 22px", borderRadius:16, background:"#1c1505", border:"2px solid #f0c040" }}>
+                <div style={{ fontSize:"clamp(20px, 2vw, 28px)", fontWeight:900, letterSpacing:5, color:"#f0c040" }}>🤝 TIE · {fmt(p.currentBid)}</div>
+                <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:"4px 14px", marginTop:4, fontSize:"clamp(24px, 2.6vw, 38px)", fontWeight:900 }}>
+                  {[lead.team, ...tied].map((ti, k) => (
+                    <Fragment key={ti}>
+                      {k > 0 && <span style={{ color:"#f0c040", fontSize:"0.8em" }}>=</span>}
+                      <span style={{ color:st.teams[ti]?.color }}>{st.teams[ti]?.name}</span>
+                    </Fragment>
+                  ))}
+                </div>
+                <div style={{ marginTop:4, fontSize:18, color:"#c0a060", fontWeight:700 }}>Winner decided by draw of lots</div>
+              </div>
+            )}
+
             {war && warA && warB && (
               <div key={war.count === BID_WAR_MIN ? "war-start" : "war"} className={war.count === BID_WAR_MIN ? "dv-pop dv-war" : "dv-war"}
                 style={{ alignSelf:"flex-start", maxWidth:"100%", padding:"12px 22px", borderRadius:16, background:"linear-gradient(90deg, #2a0d05, #1a0806)", border:"2px solid #ff7a28" }}>
@@ -285,10 +301,10 @@ export function DisplayView() {
         {draw && (
           <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18,
             background: draw.done ? "rgba(3,7,16,.55)" : "rgba(3,7,16,.88)", backdropFilter:"blur(8px)", transition:"background .4s" }}>
-            <div style={{ fontSize:"clamp(22px, 2.4vw, 34px)", fontWeight:800, letterSpacing:6, color:"#6a80aa", textTransform:"uppercase" }}>🎲 Random draw</div>
+            <div style={{ fontSize:"clamp(22px, 2.4vw, 34px)", fontWeight:800, letterSpacing:6, color:"#6a80aa", textTransform:"uppercase" }}>🎲 {draw.title ?? "Random draw"}</div>
             <div key={draw.done ? "done" : "roll"} className={draw.done ? "dv-pop" : undefined}
               style={{ fontSize:"clamp(48px, 6vw, 100px)", fontWeight:900, textAlign:"center", padding:"0 24px", lineHeight:1.1,
-                color: draw.done ? "#f0c040" : "#c0d4f0", textShadow: draw.done ? "0 0 50px rgba(240,192,64,.6)" : "none" }}>
+                color: draw.done ? (draw.color ?? "#f0c040") : "#c0d4f0", textShadow: draw.done ? `0 0 50px ${draw.color ?? "rgba(240,192,64,.6)"}` : "none" }}>
               {draw.done && draw.serial !== undefined && <span style={{ color:"#90a4d4" }}>#{draw.serial} </span>}{draw.name}
             </div>
           </div>
@@ -298,7 +314,7 @@ export function DisplayView() {
       {/* Team purses */}
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(st.teams.length, 8)}, minmax(0, 1fr))`, gap:10, padding:"14px 20px", borderTop:"1px solid #1a2d50", background:"#07101e" }}>
         {st.teams.map((t, i) => {
-          const leading = avail && lead?.team === i;
+          const leading = avail && (lead?.team === i || tied.includes(i));
           const full = squadFull(t, rules);
           return (
             <div key={t.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:12, minWidth:0,

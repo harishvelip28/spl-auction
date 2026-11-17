@@ -27,9 +27,17 @@ export interface AuctionConfig {
   league: LeagueConfig; rules: RulesConfig; teams: TeamDef[];
   csv: { url: string; columnMap: Partial<ColumnMap>; };
 }
-export interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; activity?: ActivityEntry[]; bids?: Bid[]; }
+export interface AuctionState { players: Player[]; teams: Team[]; cur: number; selTeam: number; activity?: ActivityEntry[]; bids?: Bid[]; tie?: Tie; }
+
+/** Teams that matched the leading bid because it is also their maximum. `at` ties it to that exact bid
+    (the leading Bid's `at`): any new bid or retract makes it stale. `teams` excludes the leader. */
+export interface Tie { at: number; teams: number[]; }
 
 /** One raise on the player currently on auction. `team` is the index into teams. */
 export interface Bid { team: number; amount: number; at: number; }
 
-export interface ActivityEntry { playerName: string; teamName: string; teamColor: string; price: number; soldAt: number; }
+export interface ActivityEntry {
+  playerName: string; teamName: string; teamColor: string; price: number; soldAt: number;
+  /** Set when the sale was decided by a tie-break draw: every team that was in the draw. */
+  draw?: string[];
+}

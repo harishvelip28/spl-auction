@@ -1,4 +1,4 @@
-import type { Player, ColumnMap, RulesConfig, Bid } from "./types";
+import type { Player, ColumnMap, RulesConfig, Bid, Tie } from "./types";
 
 export const fmt = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
 export const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -81,6 +81,15 @@ export function bidStepAt(amount: number, rules: Pick<RulesConfig, "bidStep" | "
   let step = rules.bidStep;
   for (const t of [...(rules.bidTiers ?? [])].sort((a, b) => a.from - b.from)) if (amount >= t.from && t.step > 0) step = t.step;
   return step;
+}
+/** Teams tied with the leader on the current bid — empty once that bid is no longer the leading one. */
+export function tiedTeams(tie: Tie | undefined, bids: Bid[]): number[] {
+  const lead = bids[bids.length - 1];
+  return tie && lead && tie.at === lead.at ? tie.teams : [];
+}
+/** Fair random index in [0, n). */
+export function randomIndex(n: number) {
+  try { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; } catch { return Math.floor(Math.random() * n); }
 }
 export const squadFull = (t: PurseAndSquad, rules: Pick<RulesConfig, "maxPlayers">) => !!rules.maxPlayers && t.players.length >= rules.maxPlayers;
 /** Seconds per going-once/twice stage; 0 = manual (the auctioneer advances each stage). */

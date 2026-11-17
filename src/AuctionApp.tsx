@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid } from "./types";
+import type { Status, Player, Team, AuctionConfig, ActivityEntry, Bid, Tie } from "./types";
 import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE, SUMMARY_KEY } from "./constants";
 import html2canvas from "html2canvas";
 import { AuctionSummary } from "./components/AuctionSummary";
 import { LiveShare, type LiveStatus } from "./components/LiveShare";
 import { buildSnapshot, liveConfigured, publish, rdShare, wrShare, type ShareState } from "./live";
-import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN } from "./utils";
+import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN, tiedTeams, randomIndex } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -13,7 +13,7 @@ import { UserBadge } from "./components/UserBadge";
 import { TeamRoster } from "./components/TeamRoster";
 import { AddPlayerModal } from "./components/AddPlayerModal";
 import { sendDisplay } from "./displayChannel";
-import { play, soundOn, setSoundOn } from "./sounds";
+import { play, soundOn, setSoundOn, DRAW_STEPS, DRAW_END } from "./sounds";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { UnsoldRound, type UnsoldChange } from "./components/UnsoldRound";
 
@@ -41,7 +41,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [showRoster,    setShowRoster]    = useState(false);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [activity,      setActivity]      = useState<ActivityEntry[]>(() => initState?.activity ?? []);
-  const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[]; bids: Bid[]; activity: ActivityEntry[] } | null>(null);
+  const [lastSnapshot,  setLastSnapshot]  = useState<{ players: Player[]; teams: Team[]; bids: Bid[]; activity: ActivityEntry[]; tie?: Tie } | null>(null);
   // Bids on the player currently on auction. Older saves have no bid log: if their current
   // player was already raised, treat the selected team as the bidder.
   const [bids, setBids] = useState<Bid[]>(() => {
@@ -50,6 +50,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     return initState && p0 && p0.status === "available" && p0.currentBid > p0.basePrice
       ? [{ team: initState.selTeam, amount: p0.currentBid, at: Date.now() }] : [];
   });
+  // Tie: teams that pressed MATCH because the leading bid is also their maximum (see teamBid).
+  const [tie, setTie] = useState<Tie | undefined>(() => initState?.tie);
+  // Tie-break draw in progress on the console: the team name showing in the roll, and whether it has landed.
+  const [roll, setRoll] = useState<{ name: string; color: string; done: boolean } | null>(null);
+  const rollTimers = React.useRef<number[]>([]);
+  useEffect(() => () => rollTimers.current.forEach(window.clearTimeout), []);
   // Auctioneer's call: 0 idle, 1 "going once", 2 "going twice" → then SOLD automatically.
   const [going, setGoing] = useState<0 | 1 | 2>(0);
   const [sound, setSound] = useState(soundOn);
@@ -87,11 +93,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
 
   // Persist state after every change so a crash/restart resumes exactly here
   useEffect(() => {
-    const ok = wrState({ players, teams, cur, selTeam, activity, bids });
+    const ok = wrState({ players, teams, cur, selTeam, activity, bids, tie });
     setSaveFailed(!ok);
     if (ok) setSaveWarnClosed(false); // a later failure shows the warning again
-  }, [players, teams, cur, selTeam, activity, bids]);
-  const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids }, manualPlayers);
+  }, [players, teams, cur, selTeam, activity, bids, tie]);
+  const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids, tie }, manualPlayers);
   // Auction summary: shown on the projector while this flag is set (the display window watches localStorage).
   const [summaryOnProj, setSummaryOnProj] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } });
   const setProjSummary = (on: boolean) => {
@@ -138,15 +144,38 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const unsold   = players.filter(x => x.status === "unsold").length;
   const remaining = players.filter(x => x.status === "available").length;
   const maxBid = (t: Team) => calcMax(t, rules.minPlayers, rules.defaultBasePrice);
+  // Tie: the leader holds a bid that is also the maximum for these teams, so they matched it instead of raising.
+  const matched = avail ? tiedTeams(tie, bids) : [];
+  /** Team i can MATCH the leading bid: it can pay the current bid but not the next raise. */
+  const canMatch = (i: number) => !!p && avail && !!lead && lead.team !== i && !squadFull(teams[i], rules)
+    && canAfford(teams[i], p.currentBid, rules.minPlayers, rules.defaultBasePrice)
+    && !canAfford(teams[i], nextBid, rules.minPlayers, rules.defaultBasePrice);
 
   /** Team i raises its paddle: opening bid is the base price, then +bidStep each time. */
   function teamBid(i: number) {
-    if (!p || !avail) return;
+    if (!p || !avail || roll) return;
     const t = teams[i];
-    if (lead?.team === i) { notify(`${t.name} already holds the bid at ${fmt(p.currentBid)}`); return; }
+    if (matched.includes(i)) {   // pressing a matched team again withdraws its match
+      const rest = matched.filter(x => x !== i);
+      setTie(rest.length ? { at: lead!.at, teams: rest } : undefined);
+      notify(`${t.name} withdrew the match`);
+      return;
+    }
+    // The leader may raise to break a tie; otherwise it already holds the bid.
+    if (lead?.team === i && !matched.length) { notify(`${t.name} already holds the bid at ${fmt(p.currentBid)}`); return; }
     if (squadFull(t, rules)) { notify(`${t.name} already has the maximum ${rules.maxPlayers} players`); return; }
     if (!canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice)) {
-      notify(`${t.name} cannot bid ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}`);
+      if (canMatch(i)) {
+        // The current bid is this team's maximum too: it can't raise, so it matches → tie.
+        setTie({ at: lead!.at, teams: [...matched, i] });
+        setGoing(0);
+        play("war");
+        notify(`🤝 ${t.name} matches ${fmt(p.currentBid)} — TIE. Press 🎲 Draw lots (key D) to decide.`);
+        return;
+      }
+      notify(lead?.team === i
+        ? `${t.name} cannot raise to ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}. Draw lots to break the tie.`
+        : `${t.name} cannot bid ${fmt(nextBid)} — max bid is ${fmt(maxBid(t))}`);
       return;
     }
     setPlayers(prev => prev.map((pl,k) => k===cur ? { ...pl, currentBid:nextBid } : pl));
@@ -159,7 +188,13 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   }
   /** Take back the most recent bid (mistaken click, or the team withdraws it). */
   function retractBid() {
-    if (!p || !avail || !bids.length) return;
+    if (!p || !avail || !bids.length || roll) return;
+    if (matched.length) {   // undo the most recent MATCH first
+      const t = teams[matched[matched.length - 1]];
+      setTie(matched.length > 1 ? { at: lead!.at, teams: matched.slice(0, -1) } : undefined);
+      notify(`${t?.name} withdrew the match`);
+      return;
+    }
     const rest = bids.slice(0, -1);
     const prev = rest[rest.length - 1];
     setPlayers(ps => ps.map((pl,k) => k===cur ? { ...pl, currentBid: prev ? prev.amount : pl.basePrice } : pl));
@@ -169,28 +204,36 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     setBidKey(k => k+1);
   }
   function markSold() {
-    if (!p || !avail) return;
+    if (!p || !avail || roll) return;
     if (!lead || !leadTeam) { notify("No bids yet — click a team to place the opening bid."); return; }
-    const bt = leadTeam, ti = lead.team;
+    if (matched.length) { setGoing(0); notify(`It's a tie at ${fmt(p.currentBid)} — press 🎲 Draw lots (key D) to decide the winner.`); return; }
+    sell(lead.team);
+  }
+  /** Sell the current player to team ti at the current bid. `draw` lists the teams when a tie-break draw decided it. */
+  function sell(ti: number, draw?: string[]) {
+    if (!p || !avail) return;
+    const bt = teams[ti];
     setGoing(0);
     if (bt.purse < p.currentBid) { notify(`${bt.name} doesn't have enough purse (${fmt(bt.purse)})`); return; }
     if (squadFull(bt, rules)) { notify(`${bt.name} already has the maximum ${rules.maxPlayers} players`); return; }
-    setLastSnapshot({ players, teams, bids, activity });
+    setLastSnapshot({ players, teams, bids, activity, tie });
     const upd: Player = { ...p, status:"sold", soldTo:bt.name, soldPrice:p.currentBid };
     setPlayers(prev => prev.map((pl,i) => i===cur ? upd : pl));
     setTeams(prev => prev.map((t,i) => i!==ti ? t : { ...t, purse:t.purse-p.currentBid, players:[...t.players, upd] }));
     if (bt.players.length + 1 === rules.minPlayers) setTimeout(() => notify(`🎉 ${bt.name} completed their team with ${rules.minPlayers} players!`), 2600);
     setBids([]);
-    setActivity(prev => [{ playerName:p.name, teamName:bt.name, teamColor:bt.color, price:p.currentBid, soldAt:Date.now() }, ...prev].slice(0, 8));
-    setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}`, teamColor:bt.color });
+    setTie(undefined);
+    setActivity(prev => [{ playerName:p.name, teamName:bt.name, teamColor:bt.color, price:p.currentBid, soldAt:Date.now(), ...(draw ? { draw } : {}) }, ...prev].slice(0, 8));
+    setOverlay({ text:"SOLD!", price:`${fmt(p.currentBid)}  →  ${bt.name}${draw ? "  ·  🎲 won the draw" : ""}`, teamColor:bt.color });
     sendDisplay({ type:"sold", player:p.name, team:bt.name, color:bt.color, price:p.currentBid });
     play("sold");
     setTimeout(() => setOverlay(null), 2500);
   }
   /** Going once → going twice → SOLD. Pressing again skips ahead; a new bid cancels it. */
   function callGoing() {
-    if (!p || !avail) return;
+    if (!p || !avail || roll) return;
     if (!lead) { notify("No bids yet — nothing to call."); return; }
+    if (matched.length) { notify(`It's a tie at ${fmt(p.currentBid)} — press 🎲 Draw lots (key D) to decide the winner.`); return; }
     if (going === 2) markSold(); else setGoing(going === 0 ? 1 : 2);
   }
   function markUnsold() {
@@ -203,11 +246,31 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     play("unsold");
     setTimeout(() => setOverlay(null), 1500);
   }
+  /** Tie-break: draw lots between the leader and the teams that matched; the winner buys at the current bid. */
+  function drawTie() {
+    if (!p || !avail || !lead || roll) return;
+    if (!matched.length) { notify("No tie to break — a tie needs a team to MATCH the leading bid."); return; }
+    const pool = [lead.team, ...matched];
+    const win = pool[randomIndex(pool.length)];
+    const names = pool.map(i => teams[i].name);
+    setGoing(0);
+    sendDisplay({ type:"draw", title:"Tie-break draw", names, player: teams[win].name, color: teams[win].color });
+    play("draw");
+    // Same rolling reveal as the projector, then the sale once the winner has landed.
+    const last = DRAW_STEPS.length - 1;
+    rollTimers.current.forEach(window.clearTimeout);
+    rollTimers.current = DRAW_STEPS.map((ms, k) => window.setTimeout(() => {
+      const ti = k === last ? win : pool[k % pool.length];
+      setRoll({ name: teams[ti].name, color: teams[ti].color, done: k === last });
+    }, ms));
+    rollTimers.current.push(window.setTimeout(() => { setRoll(null); sell(win, names); }, DRAW_END + 1300));
+  }
   function undoLast() {
-    if (!lastSnapshot) return;
+    if (!lastSnapshot || roll) return;
     setPlayers(lastSnapshot.players);
     setTeams(lastSnapshot.teams);
     setBids(lastSnapshot.bids);
+    setTie(lastSnapshot.tie);
     setGoing(0);
     setActivity(lastSnapshot.activity);
     setLastSnapshot(null);
@@ -275,7 +338,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     if (!window.confirm("🔄 Reset all bids and team assignments?\n\nThis cannot be undone.")) return;
     const rp = players.map(pl => ({ ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined }));
     const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:[] }));
-    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]); setGoing(0);
+    setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]); setTie(undefined); setGoing(0);
   }
   function deletePlayer() {
     if (!p) return;
@@ -351,6 +414,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
       if (e.key === "-" || e.key === "Backspace") { e.preventDefault(); retractBid(); }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); callGoing(); }
       if (e.key === "r" || e.key === "R") { e.preventDefault(); randomPlayer(); }
+      if (e.key === "d" || e.key === "D") { e.preventDefault(); drawTie(); }
       if (e.key === "Escape" && going) { e.preventDefault(); setGoing(0); }
     };
     window.addEventListener("keydown", handler);
@@ -571,6 +635,14 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         ) : (
                           <div style={{ marginTop:10, fontSize:14, color:"#4a6080", fontWeight:600 }}>Awaiting opening bid</div>
                         ))}
+                        {matched.length > 0 && lead && (
+                          <div style={{ marginTop:10, padding:"6px 10px", borderRadius:10, background:"#1c1505", border:"1px solid #8a6a10", fontSize:13, fontWeight:800, color:"#f0c040", lineHeight:1.4 }}>
+                            🤝 TIE at {fmt(p.currentBid)}<br />
+                            {[lead.team, ...matched].map((ti, k) => (
+                              <React.Fragment key={ti}>{k > 0 && <span style={{ color:"#6a80aa" }}> = </span>}<span style={{ color:teams[ti]?.color }}>{teams[ti]?.name}</span></React.Fragment>
+                            ))}
+                          </div>
+                        )}
                         {war && (
                           <div style={{ marginTop:10, padding:"6px 10px", borderRadius:10, background:"#2a0d05", border:"1px solid #7a3a10", fontSize:13, fontWeight:800, color:"#ff9f43", lineHeight:1.4 }}>
                             🔥 BID WAR · {war.count} bids<br />
@@ -605,6 +677,17 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         )}
                       </div>
                     </div>
+                    {/* Tie-break draw: team names roll, slow down and land on the winner */}
+                    {roll && (
+                      <div style={{ position:"absolute", inset:0, zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12,
+                        background: roll.done ? `${roll.color}33` : "rgba(3,7,16,.85)", backdropFilter:"blur(6px)", transition:"background .3s" }}>
+                        <div style={{ fontSize:14, fontWeight:800, letterSpacing:4, color:"#6a80aa", textTransform:"uppercase" }}>🎲 Tie-break draw</div>
+                        <div key={roll.done ? "done" : "roll"} className={roll.done ? "pop" : undefined}
+                          style={{ fontSize:48, fontWeight:900, textAlign:"center", padding:"0 20px", lineHeight:1.1, color:roll.color, textShadow: roll.done ? `0 0 40px ${roll.color}` : "none" }}>
+                          {roll.name}
+                        </div>
+                      </div>
+                    )}
                     {/* SOLD / UNSOLD overlay */}
                     {overlay && (
                       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10,
@@ -637,17 +720,20 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   {teams.map((t,i) => {
                     const leading = lead?.team === i;
                     const full = squadFull(t, rules);
-                    const blocked = !!p && avail && !leading && (full || !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice));
-                    const hot = leading;
+                    const isMatched = matched.includes(i);
+                    const matchable = !isMatched && canMatch(i);
+                    const blocked = !!p && avail && !leading && !isMatched && !matchable && (full || !canAfford(t, nextBid, rules.minPlayers, rules.defaultBasePrice));
+                    const hot = leading || isMatched;
                     return (
-                      <button key={t.name} onClick={()=>teamBid(i)} disabled={!p || !avail}
-                        title={full ? `${t.name} has the maximum ${rules.maxPlayers} players` : blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
+                      <button key={t.name} onClick={()=>teamBid(i)} disabled={!p || !avail || !!roll}
+                        title={isMatched ? `${t.name} matched ${fmt(p!.currentBid)} — click to withdraw the match` : matchable ? `${fmt(p!.currentBid)} is ${t.name}'s maximum too — click to MATCH (tie) (key ${i+1})` : full ? `${t.name} has the maximum ${rules.maxPlayers} players` : blocked ? `${t.name} cannot bid ${fmt(nextBid)} (max ${fmt(maxBid(t))})` : leading ? "Holds the current bid" : `Bid ${fmt(nextBid)} for ${t.name} (key ${i+1})`}
                         style={{ padding:"10px 6px", borderRadius:12, border:`2px solid ${hot?t.color:"#1a2d50"}`, position:"relative",
                           background: hot?`${t.color}22`:"transparent", cursor: !p || !avail ? "default" : "pointer", opacity: blocked ? .35 : 1,
                           display:"flex", flexDirection:"column", alignItems:"center", gap:5,
                           transition:"all .15s", boxShadow: hot?`0 0 18px ${t.color}55`:"none" }}>
                         {i < 9 && <span style={{ position:"absolute", top:5, left:7, fontSize:10, fontWeight:800, color:"#3d5070" }}>{i+1}</span>}
-                        {leading && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#050a14", background:t.color, borderRadius:6, padding:"1px 5px" }}>LEAD</span>}
+                        {(leading || isMatched) && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#050a14", background:t.color, borderRadius:6, padding:"1px 5px" }}>{leading && !matched.length ? "LEAD" : "TIE"}</span>}
+                        {matchable && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#f0c040", border:"1px solid #8a6a10", borderRadius:6, padding:"0 4px" }}>MATCH?</span>}
                         <div style={{ width:40, height:40, borderRadius:"50%",
                           background:`linear-gradient(135deg, ${t.color}22, ${t.color}55)`,
                           border:`2px solid ${hot?t.color:t.color+"66"}`,
@@ -670,12 +756,21 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
 
               {/* Action buttons */}
               <div style={{ padding:"16px 18px", display:"flex", flexDirection:"column", gap:10 }}>
-                <button className="cbtn" onClick={retractBid} disabled={!canLow} title="Take back the last bid (key − or Backspace)"
+                <button className="cbtn" onClick={retractBid} disabled={!canLow || !!roll} title="Take back the last bid (key − or Backspace)"
                   style={{ padding:"12px 0", borderRadius:10, border:"1px solid #1a2d50", fontSize:15, fontWeight:800, cursor:"pointer", background:"#0c1830", color:"#90a4d4" }}>
                   ↶ Retract last bid
                 </button>
+                {matched.length > 0 && (
+                  <button className="cbtn" onClick={drawTie} disabled={!!roll} title="Pick the winner at random from the tied teams (key D)"
+                    style={{ padding:"16px 0", borderRadius:10, border:"1px solid #8a6a10", fontSize:18, fontWeight:900, cursor:"pointer", background:"#1c1505", color:"#f0c040", letterSpacing:"1px" }}>
+                    🎲 Draw lots
+                    <span style={{ display:"block", fontSize:13, letterSpacing:0, fontWeight:700, marginTop:3, color:"#c0a060" }}>
+                      {matched.length + 1} teams tied at {fmt(p!.currentBid)}
+                    </span>
+                  </button>
+                )}
                 <div style={{ display:"grid", gridTemplateColumns: going ? "1fr auto" : "1fr", gap:8 }}>
-                  <button className="cbtn" onClick={callGoing} disabled={!avail || !leadTeam} title={callSecs(rules) ? "Auctioneer's call — auto-SOLD at the end (key G, Esc cancels)" : "Auctioneer's call — press for once, twice, SOLD (key G, Esc cancels)"}
+                  <button className="cbtn" onClick={callGoing} disabled={!avail || !leadTeam || matched.length > 0 || !!roll} title={callSecs(rules) ? "Auctioneer's call — auto-SOLD at the end (key G, Esc cancels)" : "Auctioneer's call — press for once, twice, SOLD (key G, Esc cancels)"}
                     style={{ padding:"12px 0", borderRadius:10, border:`1px solid ${going?"#7a3a10":"#3a2800"}`, fontSize:15, fontWeight:800, cursor:"pointer",
                       background: going ? "#2a1205" : "#1a1000", color: going===2 ? "#ff7a50" : "#f0a030" }}>
                     {going===0 ? "🔨 Going once…" : going===1 ? "🔨 Going twice ▸" : callSecs(rules) ? "🔨 Sold now ▸" : "🔨 SOLD ▸"}
@@ -687,7 +782,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                     </button>
                   )}
                 </div>
-                <button className="cbtn" onClick={markSold} disabled={!avail || !leadTeam}
+                <button className="cbtn" onClick={markSold} disabled={!avail || !leadTeam || matched.length > 0 || !!roll}
                   style={{ padding:"16px 0", borderRadius:10, border:"1px solid #1a4a2a", fontSize:20, fontWeight:900, cursor:"pointer", background:"#0a2818", color:"#30d158", letterSpacing:"2px" }}>
                   ✓ SOLD{leadTeam ? <span style={{ display:"block", fontSize:13, letterSpacing:0, fontWeight:700, marginTop:3, color:"#8fdca6" }}>to {leadTeam.name} · {fmt(p!.currentBid)}</span> : null}
                 </button>
@@ -696,7 +791,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                   ✗ UNSOLD
                 </button>
                 {lastSnapshot && (
-                  <button className="cbtn" onClick={undoLast}
+                  <button className="cbtn" onClick={undoLast} disabled={!!roll}
                     style={{ padding:"13px 0", borderRadius:10, border:"1px solid #3a2800", fontSize:16, fontWeight:800, cursor:"pointer", background:"#1a1000", color:"#f0a030" }}>
                     ↩ Undo Last
                   </button>
@@ -824,7 +919,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                       </div>
                       <div>
                         <div style={{ fontSize:12, fontWeight:700, color:a.teamColor, whiteSpace:"nowrap" }}>{a.teamName}</div>
-                        <div style={{ fontSize:13, fontWeight:900, color:"#f0c040" }}>{fmt(a.price)}</div>
+                        <div style={{ fontSize:13, fontWeight:900, color:"#f0c040" }} title={a.draw ? `Won a tie-break draw between ${a.draw.join(", ")}` : undefined}>{fmt(a.price)}{a.draw ? " 🎲" : ""}</div>
                         <div style={{ fontSize:11, color:"#3d5070" }}>{timeAgo(a.soldAt)}</div>
                       </div>
                     </div>

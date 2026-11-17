@@ -5,8 +5,9 @@ export type DisplayEvent =
   | { type: "unsold"; player: string }
   | { type: "reauction" }
   | { type: "going"; stage: 0 | 1 | 2 }
-  /** Random draw: the projector rolls through `names`, then lands on `player`. */
-  | { type: "draw"; names: string[]; player: string; serial: number };
+  /** Random draw: the projector rolls through `names`, then lands on `player`. A tie-break draw rolls
+      team names (no serial) under its own `title`. */
+  | { type: "draw"; names: string[]; player: string; serial?: number; title?: string; color?: string };
 
 const NAME = "spl-auction-display";
 

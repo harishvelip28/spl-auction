@@ -18,6 +18,7 @@ export function rdState(cfg: AuctionConfig, manual: Player[]): AuctionState|null
       cur: st.cur??0, selTeam: st.selTeam??0,
       activity: Array.isArray(st.activity) ? st.activity : [],
       bids: Array.isArray(st.bids) ? st.bids : undefined,
+      tie: st.tie && Array.isArray(st.tie.teams) ? st.tie : undefined,
     };
   } catch { return null; }
 }
