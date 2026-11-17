@@ -9,7 +9,8 @@
    Anonymous sign-in, paste the rules from FIREBASE_RULES below, then set
    the VITE_FIREBASE_* variables (see .env.example) and redeploy.
 ═══════════════════════════════════════════════════════════════════ */
-import type { ActivityEntry, AuctionConfig, Bid, Player, RulesConfig, Status, Team } from "./types";
+import type { ActivityEntry, AuctionConfig, Bid, Player, RulesConfig, Status, Team, Tie } from "./types";
+import { tiedTeams } from "./utils";
 
 const env = import.meta.env;
 const FB = {
@@ -49,12 +50,16 @@ export interface LiveSnapshot {
   player: LivePlayer | null;
   bids: Bid[];
   going: 0 | 1 | 2;
+  /** Teams tied with the leader on the current bid (team indices, leader excluded); empty when no tie. */
+  tie: number[];
+  /** A tie-break draw is rolling on the console right now. */
+  drawing: boolean;
   counts: { sold: number; unsold: number; remaining: number };
   recent: ActivityEntry[];
 }
 
 export function buildSnapshot(config: AuctionConfig, s: {
-  players: Player[]; teams: Team[]; cur: number; bids: Bid[]; going: 0 | 1 | 2; activity: ActivityEntry[];
+  players: Player[]; teams: Team[]; cur: number; bids: Bid[]; going: 0 | 1 | 2; activity: ActivityEntry[]; tie?: Tie; drawing?: boolean;
 }): Omit<LiveSnapshot, "owner" | "updatedAt"> {
   const p = s.players[s.cur];
   const r = config.rules;
@@ -72,6 +77,8 @@ export function buildSnapshot(config: AuctionConfig, s: {
     } : null,
     bids: s.bids.slice(-12),
     going: s.going,
+    tie: p?.status === "available" ? tiedTeams(s.tie, s.bids) : [],
+    drawing: !!s.drawing,
     counts: {
       sold: s.players.filter(x => x.status === "sold").length,
       unsold: s.players.filter(x => x.status === "unsold").length,
@@ -91,6 +98,8 @@ function normalise(v: Partial<LiveSnapshot> | null): LiveSnapshot | null {
     player: v.player ?? null,
     bids: v.bids ?? [],
     going: v.going ?? 0,
+    tie: v.tie ?? [],
+    drawing: v.drawing ?? false,
     counts: v.counts ?? { sold: 0, unsold: 0, remaining: 0 },
     recent: v.recent ?? [],
   };

@@ -123,12 +123,12 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   useEffect(() => {
     if (!share?.on || !liveConfigured()) return;
     const t = window.setTimeout(() => {
-      publish(share.id, buildSnapshot(config, { players, teams, cur, bids, going, activity }))
+      publish(share.id, buildSnapshot(config, { players, teams, cur, bids, going, activity, tie, drawing: !!roll }))
         .then(() => setLiveStatus({ ok: true, at: Date.now() }))
         .catch(e => setLiveStatus({ ok: false, msg: (e as Error).message }));
     }, 250);
     return () => window.clearTimeout(t);
-  }, [share, players, teams, cur, bids, going, activity]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [share, players, teams, cur, bids, going, activity, tie, !!roll]);  // eslint-disable-line react-hooks/exhaustive-deps
   const openDisplay = () => window.open(window.location.pathname + window.location.search + "#display", "spl-auction-display");
 
   const p      = players[cur];
