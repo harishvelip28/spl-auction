@@ -1,7 +1,8 @@
 import { useState, useEffect, Fragment } from "react";
 import type React from "react";
 import type { AuctionConfig, AuctionState } from "./types";
-import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, SUMMARY_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
+import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, SUMMARY_KEY, TEAMS_KEY, ROLE_STYLE, UNCERTAIN_BADGE } from "./constants";
+import { TeamShowcase } from "./components/TeamShowcase";
 import { AuctionSummary } from "./components/AuctionSummary";
 import { fmt, calcMax, squadFull, callSecs, bidWar, BID_WAR_MIN, tiedTeams } from "./utils";
 import { rdCfg, rdState, rdManual } from "./storage";
@@ -18,6 +19,7 @@ const load = (): { cfg: AuctionConfig | null; st: AuctionState | null } => {
 };
 
 const readSummary = () => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } };
+const readTeams = () => { try { return localStorage.getItem(TEAMS_KEY) === "1"; } catch { return false; } };
 
 const toggleFullscreen = () => {
   if (document.fullscreenElement) void document.exitFullscreen();
@@ -31,6 +33,7 @@ export function DisplayView() {
   const [event, setEvent] = useState<DisplayEvent | null>(null);
   const [going, setGoing] = useState<0 | 1 | 2>(0);
   const [showSummary, setShowSummary] = useState(readSummary);
+  const [showTeams, setShowTeams] = useState(readTeams);
   // Random draw: the name currently showing in the roll, and whether it has landed.
   const [draw, setDraw] = useState<{ name: string; serial?: number; done: boolean; title?: string; color?: string } | null>(null);
 
@@ -61,6 +64,7 @@ export function DisplayView() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === null || e.key === STATE_KEY || e.key === CONFIG_KEY || e.key === MANUAL_KEY) setData(load());
       if (e.key === null || e.key === SUMMARY_KEY) setShowSummary(readSummary());
+      if (e.key === null || e.key === TEAMS_KEY) setShowTeams(readTeams());
     };
     window.addEventListener("storage", onStorage);
     let timer: number | undefined;
@@ -115,6 +119,15 @@ export function DisplayView() {
   const { rules } = cfg;
   const p = st.players[st.cur];
   const bids = st.bids ?? [];
+  // Team view: steps aside by itself once bidding opens on a player, so the hall never misses a bid.
+  if (showTeams && !(p?.status === "available" && bids.length > 0) && !event && !draw) {
+    return (
+      <div style={{ ...page, cursor: idle ? "none" : "default" }}>
+        <TeamShowcase teams={st.teams} rules={rules} league={`${cfg.league.name} ${cfg.league.year}`.trim()} />
+        {fsButton}
+      </div>
+    );
+  }
   const lead = bids.length ? bids[bids.length - 1] : null;
   const leadTeam = lead ? st.teams[lead.team] : null;
   const war = p?.status === "available" ? bidWar(bids) : null;

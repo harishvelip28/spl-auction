@@ -8,6 +8,7 @@ const KEYS: [string, string][] = [
   ["→  /  ←",          "Next / previous player"],
   ["R",                "Draw a random player"],
   ["D",                "Tie-break: draw lots between the tied teams"],
+  ["T",                "Team squads on the projector on / off"],
   ["M",                "Sound on / off"],
   ["?",                "Show or hide this list"],
 ];
