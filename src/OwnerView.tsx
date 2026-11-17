@@ -46,13 +46,25 @@ export function OwnerView({ id }: { id: string }) {
   const iLead = !!my && leadTeam?.name === my.name;
   const nextBid = !p ? 0 : leadBid ? p.currentBid + bidStepAt(p.currentBid, rules) : p.basePrice;
   const war = avail ? bidWar(bids) : null;
+  // Tie: the leader plus every team that matched the bid because it is their maximum too.
+  const tiedIdx = avail && leadBid && snap.tie.length ? [leadBid.team, ...snap.tie] : [];
+  const iTied = !!my && tiedIdx.some(i => teams[i]?.name === my.name);
+  const myIdx = my ? teams.findIndex(t => t.name === my.name) : -1;
+  const soldByDraw = p?.status === "sold" ? snap.recent.find(a => a.playerName === p.name && a.teamName === p.soldTo)?.draw : undefined;
   const soldTeam = p?.soldTo ? teams.find(t => t.name === p.soldTo) : undefined;
   const maxOf = (t: LiveTeam) => calcMax(t, rules.minPlayers, rules.defaultBasePrice);
 
   let myStatus: { text: string; color: string; bg: string } | null = null;
   if (my && avail) {
-    if (iLead) myStatus = { text: "✅ You hold the bid", color: "#30d158", bg: "#0a2818" };
+    if (iTied && snap.drawing) myStatus = { text: "🎲 Drawing lots now — fingers crossed!", color: "#f0c040", bg: "#1c1505" };
+    else if (iTied) myStatus = iLead && canAfford(my, nextBid, rules.minPlayers, rules.defaultBasePrice)
+      ? { text: `🤝 Tied at ${fmt(p!.currentBid)} — raise to ${fmt(nextBid)} to win outright, or it goes to a draw`, color: "#f0c040", bg: "#1c1505" }
+      : { text: `🤝 You're tied at ${fmt(p!.currentBid)} — the winner is decided by draw of lots`, color: "#f0c040", bg: "#1c1505" };
+    else if (iLead) myStatus = { text: "✅ You hold the bid", color: "#30d158", bg: "#0a2818" };
     else if (squadFull(my, rules)) myStatus = { text: `Squad full (${rules.maxPlayers} players) — you can't bid`, color: "#ff5f57", bg: "#1e0808" };
+    else if (leadBid && myIdx !== leadBid.team && canAfford(my, p!.currentBid, rules.minPlayers, rules.defaultBasePrice)
+      && !canAfford(my, nextBid, rules.minPlayers, rules.defaultBasePrice))
+      myStatus = { text: `${fmt(p!.currentBid)} is your max too — tell the desk to MATCH and go to a draw`, color: "#f0c040", bg: "#1c1505" };
     else if (!canAfford(my, nextBid, rules.minPlayers, rules.defaultBasePrice)) myStatus = { text: `Next bid ${fmt(nextBid)} is over your max ${fmt(maxOf(my))}`, color: "#ff5f57", bg: "#1e0808" };
     else myStatus = { text: `You can bid ${fmt(nextBid)} · your max ${fmt(maxOf(my))}`, color: "#f0c040", bg: "#1a1000" };
   }
@@ -121,6 +133,16 @@ export function OwnerView({ id }: { id: string }) {
               </div>
             )}
 
+            {tiedIdx.length > 0 && (
+              <div key={snap.drawing ? "draw" : tiedIdx.length} className="ov-pop" style={{ marginTop:12, padding:"8px 12px", borderRadius:10, background:"#1c1505", border:"1px solid #f0c040", fontWeight:800, fontSize:14, color:"#f0c040" }}>
+                {snap.drawing ? "🎲 DRAWING LOTS…" : `🤝 TIE at ${fmt(p!.currentBid)}`}<br />
+                {tiedIdx.map((ti, k) => (
+                  <span key={ti}>{k > 0 && <span style={{ color:"#6a80aa" }}> = </span>}<span style={{ color:teams[ti]?.color }}>{teams[ti]?.name}</span></span>
+                ))}
+                {!snap.drawing && <div style={{ fontSize:12, color:"#c0a060", fontWeight:700, marginTop:2 }}>Winner decided by draw of lots</div>}
+              </div>
+            )}
+
             {war && (
               <div style={{ marginTop:12, padding:"8px 12px", borderRadius:10, background:"#2a0d05", border:"1px solid #ff7a28", fontWeight:800, fontSize:14, color:"#ff9f43" }}>
                 🔥 BID WAR · {war.count} bids<br />
@@ -132,6 +154,7 @@ export function OwnerView({ id }: { id: string }) {
               <div className="ov-pop" style={{ marginTop:14, padding:"10px 12px", borderRadius:10, background:`${soldTeam?.color ?? "#30d158"}22`, border:`1px solid ${soldTeam?.color ?? "#30d158"}`,
                 fontSize:18, fontWeight:900, color:soldTeam?.color ?? "#30d158" }}>
                 {my && p.soldTo === my.name ? "🎉 Yours! " : "SOLD "}to {p.soldTo} · {fmt(p.soldPrice ?? 0)}
+                {soldByDraw && <div style={{ fontSize:13, fontWeight:700, marginTop:2, color:"#c0a060" }}>🎲 Won the draw between {soldByDraw.join(", ")}</div>}
               </div>
             )}
             {p.status === "unsold" && <div style={{ marginTop:14, fontSize:18, fontWeight:900, color:"#ff5f57" }}>UNSOLD</div>}
@@ -203,7 +226,7 @@ export function OwnerView({ id }: { id: string }) {
               {snap.recent.map((a, i) => (
                 <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:10, fontSize:14 }}>
                   <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.playerName} → <b style={{ color:a.teamColor }}>{a.teamName}</b></span>
-                  <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }}>{fmt(a.price)}</span>
+                  <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }} title={a.draw ? `Won a tie-break draw between ${a.draw.join(", ")}` : undefined}>{fmt(a.price)}{a.draw ? " 🎲" : ""}</span>
                 </div>
               ))}
             </div>
