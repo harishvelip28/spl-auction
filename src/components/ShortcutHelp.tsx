@@ -2,6 +2,7 @@
 
 const KEYS: [string, string][] = [
   ["1 – 9",            "Bid for that team — or MATCH, when the bid is already its maximum (tie)"],
+  ["B",                "Direct bid: type an amount, then press a team number"],
   ["−  or  Backspace", "Retract the last bid"],
   ["G",                "Going once → going twice → SOLD"],
   ["Esc",              "Cancel the going once / twice call"],
