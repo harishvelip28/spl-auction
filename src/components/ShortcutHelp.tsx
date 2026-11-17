@@ -1,12 +1,13 @@
 /* Keyboard shortcut cheat sheet for the operator console (opened with "?" or the ⌨ button). */
 
 const KEYS: [string, string][] = [
-  ["1 – 9",            "Bid for that team (number shown on each team button)"],
+  ["1 – 9",            "Bid for that team — or MATCH, when the bid is already its maximum (tie)"],
   ["−  or  Backspace", "Retract the last bid"],
   ["G",                "Going once → going twice → SOLD"],
   ["Esc",              "Cancel the going once / twice call"],
   ["→  /  ←",          "Next / previous player"],
   ["R",                "Draw a random player"],
+  ["D",                "Tie-break: draw lots between the tied teams"],
   ["M",                "Sound on / off"],
   ["?",                "Show or hide this list"],
 ];
