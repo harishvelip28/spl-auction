@@ -1,8 +1,10 @@
-import type { AuctionConfig } from "../types";
+import type { AuctionConfig, Player } from "../types";
 import { fmt, callSecs } from "../utils";
 
 /* Step 5: Review */
-export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCount: number }) {
+export function Step5Review({ cfg, players }: { cfg: AuctionConfig; players: Player[] }) {
+  const playerCount = players.length;
+  const iconTeams = cfg.teams.filter(t => t.icon?.trim());
   const rows = [
     { label: "League",       value: `${cfg.league.name} ${cfg.league.year}` },
     { label: "Teams",        value: `${cfg.teams.length} teams` },
@@ -12,6 +14,7 @@ export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCo
     { label: "Bid step",     value: [fmt(cfg.rules.bidStep), ...[...(cfg.rules.bidTiers ?? [])].filter(t=>t.step>0).sort((a,b)=>a.from-b.from).map(t => `${fmt(t.step)} from ${fmt(t.from)}`)].join(" → ") },
     { label: "Going once/twice", value: callSecs(cfg.rules) ? `${callSecs(cfg.rules)}s each, then SOLD` : "Manual — press G for once, twice, SOLD" },
     { label: "Base price",   value: fmt(cfg.rules.defaultBasePrice) },
+    { label: "Icon players", value: iconTeams.length ? `${iconTeams.length} of ${cfg.teams.length} teams (free, not auctioned)` : "None" },
   ];
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#07101e", border:"1px solid #1a2d50", borderRadius:12, overflow:"hidden" }}>
@@ -30,6 +33,7 @@ export function Step5Review({ cfg, playerCount }: { cfg: AuctionConfig; playerCo
             <div key={t.name} style={{ display:"flex", alignItems:"center", gap:6, background:"#0c1830", border:"1px solid #1a2d50", borderRadius:20, padding:"4px 12px" }}>
               <div style={{ width:10, height:10, borderRadius:"50%", background:t.color }} />
               <span style={{ fontSize:14, color:"#fff", fontWeight:600 }}>{t.name}</span>
+              {t.icon?.trim() && <span style={{ fontSize:13, color:"#f0c040", fontWeight:600 }}>⭐ {t.icon.trim()}</span>}
             </div>
           ))}
         </div>

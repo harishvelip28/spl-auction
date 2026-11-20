@@ -40,7 +40,7 @@ export interface LivePlayer {
   city: string; state: string; basePrice: number; currentBid: number; status: Status;
   soldTo?: string; soldPrice?: number; availabilityUncertain?: boolean;
 }
-export interface LiveTeam { name: string; color: string; purse: number; players: { serialNo: number; name: string; role: string; soldPrice: number }[]; }
+export interface LiveTeam { name: string; color: string; purse: number; players: { serialNo: number; name: string; role: string; soldPrice: number; icon?: boolean }[]; }
 export interface LiveSnapshot {
   owner: string;
   updatedAt: number;
@@ -68,7 +68,7 @@ export function buildSnapshot(config: AuctionConfig, s: {
     rules: { totalPurse: r.totalPurse, minPlayers: r.minPlayers, maxPlayers: r.maxPlayers ?? 0, defaultBasePrice: r.defaultBasePrice, bidStep: r.bidStep, bidTiers: r.bidTiers ?? [] },
     teams: s.teams.map(t => ({
       name: t.name, color: t.color, purse: t.purse,
-      players: t.players.map(x => ({ serialNo: x.serialNo, name: x.name, role: x.role, soldPrice: x.soldPrice ?? x.currentBid })),
+      players: t.players.map(x => ({ serialNo: x.serialNo, name: x.name, role: x.role, soldPrice: x.soldPrice ?? x.currentBid, ...(x.icon ? { icon: true } : {}) })),
     })),
     player: p ? {
       serialNo: p.serialNo, name: p.name, role: p.role, batting: p.batting, bowling: p.bowling, photo: p.photo,

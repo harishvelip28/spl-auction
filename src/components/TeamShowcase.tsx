@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type React from "react";
 import type { RulesConfig, Team } from "../types";
-import { fmt, calcMax, squadFull } from "../utils";
+import { fmt, calcMax, squadFull, byIconThenPrice } from "../utils";
 import { ROLE_STYLE } from "../constants";
 
 /* Projector "team view": cycles through every team's squad — purse, max bid, players bought and
@@ -30,13 +30,14 @@ export function TeamShowcase({ teams, rules, league }: {
   const spent = rules.totalPurse - t.purse;
   const full = squadFull(t, rules);
   const need = Math.max(0, rules.minPlayers - t.players.length);
-  const squad = [...t.players].sort((a, b) => (b.soldPrice ?? 0) - (a.soldPrice ?? 0));
-  const topBuy = squad[0];
+  const squad = [...t.players].sort(byIconThenPrice);
+  const bought = squad.filter(p => !p.icon);
+  const topBuy = bought[0];
   const cols = squad.length > 12 ? 3 : 2;
   const maxRows = 8;
   const shown = squad.slice(0, cols * maxRows);
   const roleCount = (r: string) => t.players.filter(p => p.role === r).length;
-  const other = t.players.filter(p => !ROLES.includes(p.role)).length;
+  const other = t.players.filter(p => !p.icon && !ROLES.includes(p.role)).length;
 
   const stats: { l: string; v: string; c: string }[] = [
     { l: "Purse left", v: fmt(t.purse), c: "#fff" },
@@ -103,7 +104,7 @@ export function TeamShowcase({ teams, rules, league }: {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: "8px 28px" }}>
               {shown.map(p => {
-                const star = p === topBuy && squad.length > 1;
+                const star = p === topBuy && bought.length > 1;
                 return (
                   <div key={p.serialNo} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", borderRadius: 10,
                     background: star ? `${t.color}22` : "#07101e", border: `1px solid ${star ? t.color : "#1a2d50"}`, minWidth: 0 }}>
@@ -111,7 +112,9 @@ export function TeamShowcase({ teams, rules, league }: {
                       {star && "⭐ "}{p.name}
                     </span>
                     <span style={{ ...(ROLE_STYLE[p.role] ?? {}), fontSize: 13, fontWeight: 800, padding: "2px 9px", borderRadius: 12, whiteSpace: "nowrap" } as React.CSSProperties}>{p.role}</span>
-                    <span style={{ fontSize: 22, fontWeight: 900, color: "#f0c040", whiteSpace: "nowrap" }}>{fmt(p.soldPrice ?? p.currentBid)}</span>
+                    {p.icon
+                      ? <span style={{ fontSize: 16, fontWeight: 900, color: "#050a14", background: "#f0c040", padding: "3px 10px", borderRadius: 12, letterSpacing: 1 }}>ICON</span>
+                      : <span style={{ fontSize: 22, fontWeight: 900, color: "#f0c040", whiteSpace: "nowrap" }}>{fmt(p.soldPrice ?? p.currentBid)}</span>}
                   </div>
                 );
               })}

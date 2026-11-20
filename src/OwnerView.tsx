@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { subscribe, type LiveSnapshot, type LiveTeam } from "./live";
-import { fmt, calcMax, canAfford, bidStepAt, squadFull, bidWar } from "./utils";
+import { fmt, calcMax, canAfford, bidStepAt, squadFull, bidWar, byIconThenPrice } from "./utils";
 import { ROLE_STYLE } from "./constants";
 import { PhotoAvatar } from "./components/PhotoAvatar";
 
@@ -186,10 +186,10 @@ export function OwnerView({ id }: { id: string }) {
             )}
             <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:6 }}>
               {my.players.length === 0 && <div style={{ fontSize:14, color:"#4a6080" }}>No players bought yet.</div>}
-              {[...my.players].sort((a, b) => b.soldPrice - a.soldPrice).map(x => (
+              {[...my.players].sort(byIconThenPrice).map(x => (
                 <div key={x.serialNo} style={{ display:"flex", justifyContent:"space-between", gap:10, fontSize:14 }}>
                   <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{x.name} <span style={{ color:"#4a6080", fontSize:12 }}>{x.role}</span></span>
-                  <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }}>{fmt(x.soldPrice)}</span>
+                  <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }}>{x.icon ? "⭐ ICON" : fmt(x.soldPrice)}</span>
                 </div>
               ))}
             </div>

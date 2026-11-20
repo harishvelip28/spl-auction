@@ -9,7 +9,8 @@ const escHtml = (v: string|number|undefined|null) =>
 /** HTML section for one team, using inline styles Word understands. */
 function buildTeamHtml(team: Team, totalPurse: number) {
   const spent = totalPurse - team.purse;
-  const avg = team.players.length ? Math.round(spent / team.players.length) : 0;
+  const bought = team.players.filter(p => !p.icon).length;
+  const avg = bought ? Math.round(spent / bought) : 0;
   const th = `style="border:1px solid #444;background:#1a2d50;color:#ffffff;padding:6px 8px;font-weight:bold;text-align:center;"`;
   const td = `style="border:1px solid #444;padding:6px 8px;text-align:center;"`;
   const tdL = `style="border:1px solid #444;padding:6px 8px;text-align:left;"`;
@@ -23,7 +24,7 @@ function buildTeamHtml(team: Team, totalPurse: number) {
           <td ${td}>${escHtml(pl.role)}</td>
           <td ${td}>${escHtml(loc)}</td>
           <td ${td}>${escHtml(pl.mobile || "—")}</td>
-          <td ${td}><b>${escHtml(fmt(pl.soldPrice ?? pl.currentBid))}</b></td>
+          <td ${td}><b>${pl.icon ? "Icon" : escHtml(fmt(pl.soldPrice ?? pl.currentBid))}</b></td>
         </tr>`;
       }).join("")
     : `<tr><td ${td} colspan="6">No players bought yet</td></tr>`;
@@ -31,7 +32,7 @@ function buildTeamHtml(team: Team, totalPurse: number) {
     <h2 style="color:${escHtml(team.color)};font-family:Calibri,Arial,sans-serif;margin:0 0 8px;">${escHtml(team.name)}</h2>
     <table style="border-collapse:collapse;margin-bottom:12px;font-family:Calibri,Arial,sans-serif;font-size:11pt;">
       <tr><th ${th}>Players</th><th ${th}>Purse Spent</th><th ${th}>Purse Left</th><th ${th}>Avg Bid</th></tr>
-      <tr><td ${td}>${team.players.length}</td><td ${td}>${escHtml(fmt(spent))}</td><td ${td}>${escHtml(fmt(team.purse))}</td><td ${td}>${team.players.length ? escHtml(fmt(avg)) : "—"}</td></tr>
+      <tr><td ${td}>${team.players.length}</td><td ${td}>${escHtml(fmt(spent))}</td><td ${td}>${escHtml(fmt(team.purse))}</td><td ${td}>${bought ? escHtml(fmt(avg)) : "—"}</td></tr>
     </table>
     <table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif;font-size:11pt;">
       <tr><th ${th}>#</th><th ${th}>Player</th><th ${th}>Role</th><th ${th}>City / State</th><th ${th}>Mobile</th><th ${th}>Bid Price</th></tr>
@@ -75,19 +76,20 @@ export function buildTeamsPdf(title: string, teamList: Team[], totalPurse: numbe
     doc.text(team.name, marginX, y += 28);
 
     const spent = totalPurse - team.purse;
-    const avg = team.players.length ? Math.round(spent / team.players.length) : 0;
+    const bought = team.players.filter(p => !p.icon).length;
+    const avg = bought ? Math.round(spent / bought) : 0;
     const head = { fillColor: "#1a2d50", textColor: "#ffffff", fontStyle: "bold" as const, halign: "center" as const };
     autoTable(doc, {
       startY: y + 10, margin: { left: marginX, right: marginX }, theme: "grid",
       headStyles: head, styles: { halign: "center", fontSize: 10 },
       head: [["Players", "Purse Spent", "Purse Left", "Avg Bid"]],
-      body: [[String(team.players.length), money(spent), money(team.purse), team.players.length ? money(avg) : "-"]],
+      body: [[String(team.players.length), money(spent), money(team.purse), bought ? money(avg) : "-"]],
     });
 
     const body = team.players.length
       ? team.players.map((pl, i) => {
           const loc = `${pl.city || ""}${pl.state && pl.state !== "—" ? `, ${pl.state}` : ""}` || "-";
-          return [String(i + 1), pl.manuallyAdded ? `${pl.name}\n(Manual Entry)` : pl.name, pl.role || "-", loc, pl.mobile || "-", money(pl.soldPrice ?? pl.currentBid)];
+          return [String(i + 1), pl.manuallyAdded ? `${pl.name}\n(Manual Entry)` : pl.name, pl.role || "-", loc, pl.mobile || "-", pl.icon ? "Icon" : money(pl.soldPrice ?? pl.currentBid)];
         })
       : [[{ content: "No players bought yet", colSpan: 6 }]];
     autoTable(doc, {

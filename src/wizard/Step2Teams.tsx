@@ -1,12 +1,37 @@
 import { useState } from "react";
 import type { TeamDef, AuctionConfig } from "../types";
 import { PRESET_COLORS } from "../constants";
-import { wizInp } from "./styles";
+import { wizInp, wizLbl } from "./styles";
+
+const splitNames = (txt: string) => {
+  const seen = new Set<string>();
+  return txt.split(/[\n,]/).map(n => n.trim()).filter(n => {
+    const k = n.toLowerCase();
+    if (!n || seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+};
 
 /* Step 2: Teams */
 export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:AuctionConfig)=>void }) {
   const [editIdx, setEditIdx] = useState<number|null>(null);
   const [showPicker, setShowPicker] = useState<number|null>(null);
+  // Icon players: names pasted here, then each team picks its one from the list.
+  const [iconTxt, setIconTxt] = useState(() => cfg.teams.map(t => t.icon?.trim()).filter(Boolean).join("\n"));
+  const iconNames = splitNames(iconTxt);
+  const holder = (name: string) => cfg.teams.findIndex(t => t.icon?.trim().toLowerCase() === name.toLowerCase());
+  const setIcon = (i: number, name: string) => {
+    const t = [...cfg.teams]; t[i] = { ...t[i], icon: name || undefined };
+    onChange({ ...cfg, teams: t });
+  };
+  // Pasting changes the list: drop assignments whose name is no longer in it.
+  const changeIconTxt = (txt: string) => {
+    setIconTxt(txt);
+    const keep = new Set(splitNames(txt).map(n => n.toLowerCase()));
+    if (cfg.teams.some(t => t.icon && !keep.has(t.icon.trim().toLowerCase())))
+      onChange({ ...cfg, teams: cfg.teams.map(t => t.icon && !keep.has(t.icon.trim().toLowerCase()) ? { ...t, icon: undefined } : t) });
+  };
+  const fillInOrder = () => onChange({ ...cfg, teams: cfg.teams.map((t, i) => ({ ...t, icon: iconNames[i] })) });
 
   const addTeam = () => {
     const next = [...cfg.teams, { name: "New Team", color: PRESET_COLORS[cfg.teams.length % PRESET_COLORS.length] }];
@@ -25,6 +50,23 @@ export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ background:"#07101e", border:"1px solid #1a2d50", borderRadius:9, padding:"12px 14px", marginBottom:6 }}>
+        <label style={wizLbl}>⭐ Icon players <span style={{ textTransform:"none", letterSpacing:0, fontWeight:400, color:"#4a6080" }}>— one per team, in the squad before bidding starts</span></label>
+        <textarea value={iconTxt} onChange={e=>changeIconTxt(e.target.value)} rows={3}
+          placeholder={"Paste icon player names, one per line\n(then pick each team's icon below)"}
+          style={{ ...wizInp, fontSize:14, padding:"8px 12px", resize:"vertical", fontFamily:"inherit" }} />
+        {iconNames.length > 0 && (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginTop:8, flexWrap:"wrap" }}>
+            <span style={{ fontSize:13, color:"#6a80aa" }}>
+              {iconNames.length} name{iconNames.length === 1 ? "" : "s"} · {cfg.teams.filter(t => t.icon).length}/{cfg.teams.length} teams assigned
+            </span>
+            <button onClick={fillInOrder} title="First name → first team, second → second team, …"
+              style={{ padding:"5px 12px", border:"1px solid #1a2d50", borderRadius:7, background:"#0c1830", color:"#90a4d4", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              Assign in list order
+            </button>
+          </div>
+        )}
+      </div>
       <div style={{ fontSize:13, color:"#4a6080", marginBottom:4, textTransform:"uppercase", letterSpacing:".5px", fontWeight:600 }}>
         {cfg.teams.length} Teams — click a team to rename it
       </div>
@@ -54,6 +96,16 @@ export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
               onKeyDown={e=>{ if(e.key==="Enter") setEditIdx(null); }} />
           ) : (
             <span onClick={()=>setEditIdx(i)} style={{ flex:1, fontSize:16, color:"#fff", fontWeight:600, cursor:"text" }}>{team.name}</span>
+          )}
+          {iconNames.length > 0 && (
+            <select value={iconNames.find(n => n.toLowerCase() === team.icon?.trim().toLowerCase()) ?? ""} onChange={e=>setIcon(i, e.target.value)}
+              title="Icon player" style={{ ...wizInp, width:170, flexShrink:0, padding:"6px 8px", fontSize:14, cursor:"pointer", color: team.icon ? "#f0c040" : "#6a80aa" }}>
+              <option value="">⭐ No icon</option>
+              {iconNames.map(n => {
+                const h = holder(n);
+                return <option key={n} value={n} disabled={h >= 0 && h !== i}>⭐ {n}{h >= 0 && h !== i ? ` (${cfg.teams[h].name})` : ""}</option>;
+              })}
+            </select>
           )}
           <button onClick={()=>delTeam(i)} style={{ background:"none", border:"none", color:"#4a6080", fontSize:18, cursor:"pointer", padding:"0 4px", lineHeight:1 }}>✕</button>
         </div>

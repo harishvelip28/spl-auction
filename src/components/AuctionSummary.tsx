@@ -1,6 +1,6 @@
 import type React from "react";
 import type { AuctionConfig, Player, Team } from "../types";
-import { fmt } from "../utils";
+import { fmt, byIconThenPrice } from "../utils";
 
 /* End-of-auction summary: headline numbers, highlights and every squad side by side.
    Used on the console (#summary, downloadable as an image) and on the projector. */
@@ -91,7 +91,8 @@ export function AuctionSummary({ config, players, teams, projector = false, inne
       {/* Squads side by side */}
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.max(cols, 1)}, minmax(0, 1fr))`, gap:12, flex: projector ? 1 : undefined, minHeight:0 }}>
         {teams.map(t => {
-          const squad = [...t.players].sort((a, b) => (b.soldPrice ?? 0) - (a.soldPrice ?? 0));
+          const squad = [...t.players].sort(byIconThenPrice);
+          const top = squad.find(pl => !pl.icon);
           const shown = squad.slice(0, rowsPerTeam);
           return (
             <div key={t.name} style={{ background:"#07101e", border:"1px solid #1a2d50", borderTop:`4px solid ${t.color}`, borderRadius:12, padding:"12px 14px", minWidth:0, overflow:"hidden" }}>
@@ -105,13 +106,15 @@ export function AuctionSummary({ config, players, teams, projector = false, inne
               </div>
               <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:px(4) }}>
                 {shown.length === 0 && <div style={{ fontSize:px(13), color:"#4a6080" }}>No players bought</div>}
-                {shown.map((pl, k) => (
+                {shown.map(pl => (
                   <div key={pl.serialNo} style={{ display:"flex", alignItems:"baseline", gap:8, fontSize:px(14) }}>
-                    <span style={{ flex:1, minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", fontWeight: k === 0 ? 800 : 600, color: k === 0 ? "#fff" : "#c0d4f0" }}>
-                      {k === 0 && "⭐ "}{pl.name}
+                    <span style={{ flex:1, minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", fontWeight: pl === top || pl.icon ? 800 : 600, color: pl === top || pl.icon ? "#fff" : "#c0d4f0" }}>
+                      {pl === top && "⭐ "}{pl.name}
                     </span>
                     <span style={{ fontSize:px(11), color:"#4a6080", fontWeight:700 }}>{ROLE_SHORT[pl.role] ?? ""}</span>
-                    <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }}>{fmt(pl.soldPrice ?? 0)}</span>
+                    {pl.icon
+                      ? <span style={{ fontSize:px(11), fontWeight:900, color:"#050a14", background:"#f0c040", padding:"1px 7px", borderRadius:10, letterSpacing:.5 }}>ICON</span>
+                      : <span style={{ fontWeight:800, color:"#f0c040", whiteSpace:"nowrap" }}>{fmt(pl.soldPrice ?? 0)}</span>}
                   </div>
                 ))}
                 {squad.length > shown.length && <div style={{ fontSize:px(12), color:"#4a6080" }}>+{squad.length - shown.length} more</div>}
