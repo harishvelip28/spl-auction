@@ -53,7 +53,7 @@ export function SetupWizard({ existingConfig, onLaunch, user }: {
             {step === 2 && <Step2Teams cfg={cfg} onChange={setCfg} />}
             {step === 3 && <Step3Rules cfg={cfg} onChange={setCfg} />}
             {step === 4 && <Step4Players cfg={cfg} onChange={setCfg} onPlayers={setPlayers} />}
-            {step === 5 && <Step5Review cfg={cfg} playerCount={players.length} />}
+            {step === 5 && <Step5Review cfg={cfg} players={players} />}
           </div>
         </div>
         {/* Footer */}

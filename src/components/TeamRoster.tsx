@@ -132,7 +132,7 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
               <tbody>
                 {team.players.map((pl,i) => (
                   <tr key={pl.serialNo} style={{ borderBottom:"1px solid #0a1528", background:i%2===0?"transparent":"#060e1b" }}>
-                    <td style={{ padding:"10px 16px", color:"#4a6080", textAlign:"center" }}>{pl.serialNo}</td>
+                    <td style={{ padding:"10px 16px", color:"#4a6080", textAlign:"center" }}>{pl.icon ? "⭐" : pl.serialNo}</td>
                     <td style={{ padding:"8px 16px", textAlign:"center" }}><div style={{ display:"flex", justifyContent:"center" }}><PhotoAvatar photo={pl.photo} name={pl.name} size={34} /></div></td>
                     <td style={{ padding:"10px 16px", color:"#fff", fontWeight:600, textAlign:"center" }}>
                       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
@@ -146,7 +146,9 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
                     </td>
                     <td style={{ padding:"10px 16px", color:"#6a80aa", textAlign:"center" }}>{pl.city}{pl.state&&pl.state!=="—"?`, ${pl.state}`:""}</td>
                     <td style={{ padding:"10px 16px", color:"#6a80aa", textAlign:"center" }}>{pl.mobile||"—"}</td>
-                    <td style={{ padding:"10px 16px", color:"#f0c040", fontWeight:800, textAlign:"center" }}>{fmt(pl.soldPrice??pl.currentBid)}</td>
+                    <td style={{ padding:"10px 16px", color:"#f0c040", fontWeight:800, textAlign:"center" }}>
+                      {pl.icon ? <span style={{ fontSize:13, fontWeight:900, color:"#050a14", background:"#f0c040", padding:"2px 9px", borderRadius:12, letterSpacing:.5 }}>ICON</span> : fmt(pl.soldPrice??pl.currentBid)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

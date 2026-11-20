@@ -5,7 +5,7 @@ import html2canvas from "html2canvas";
 import { AuctionSummary } from "./components/AuctionSummary";
 import { LiveShare, type LiveStatus } from "./components/LiveShare";
 import { buildSnapshot, liveConfigured, publish, rdShare, wrShare, type ShareState } from "./live";
-import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN, tiedTeams, randomIndex } from "./utils";
+import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, squadFull, callSecs, bidWar, BID_WAR_MIN, tiedTeams, randomIndex, withIcons } from "./utils";
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
 import { PhotoAvatar } from "./components/PhotoAvatar";
@@ -30,8 +30,11 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   const [manualPlayers, setManualPlayers] = useState<Player[]>(() => rdManual(rules.defaultBasePrice));
   const [initState] = useState(() => rdState(config, rdManual(rules.defaultBasePrice)));
 
-  const [players, setPlayers]  = useState<Player[]>(() => initState?.players ?? initPlayers);
-  const [teams,   setTeams]    = useState<Team[]>(() => initState?.teams ?? config.teams.map(t => ({ ...t, purse: rules.totalPurse, players: [] })));
+  // Fresh start: icon players go straight into their teams and out of the auction pool.
+  const fresh = (pool: Player[]) => withIcons(config.teams, pool, rules.totalPurse, rules.defaultBasePrice);
+  const [initFresh] = useState(() => initState ? null : fresh(initPlayers));
+  const [players, setPlayers]  = useState<Player[]>(() => initState?.players ?? initFresh!.players);
+  const [teams,   setTeams]    = useState<Team[]>(() => initState?.teams ?? initFresh!.teams);
   const [cur,     setCur]      = useState(() => initState?.cur ?? 0);
   const [selTeam, setSelTeam]  = useState(() => initState?.selTeam ?? 0);
   const [overlay, setOverlay]  = useState<{ text: string; price?: string; teamColor?: string } | null>(null);
@@ -77,7 +80,7 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
 
   // Players fetched by the root after this screen mounted (fresh start, nothing saved yet)
   useEffect(() => {
-    if (!players.length && initPlayers.length) setPlayers(initPlayers);
+    if (!players.length && initPlayers.length) { const f = fresh(initPlayers); setPlayers(f.players); setTeams(f.teams); }
   }, [initPlayers]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page: auction screen or full player list. Synced to the URL hash so browser Back works.
@@ -362,9 +365,10 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
     onSetup();
   }
   function resetAll() {
-    if (!window.confirm("🔄 Reset all bids and team assignments?\n\nThis cannot be undone.")) return;
+    if (!window.confirm("🔄 Reset all bids and team assignments?\n\nIcon players stay with their teams. This cannot be undone.")) return;
     const rp = players.map(pl => ({ ...pl, status:"available" as Status, currentBid:pl.basePrice, soldTo:undefined, soldPrice:undefined }));
-    const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:[] }));
+    // Icon players stay with their teams.
+    const rt = config.teams.map(t => ({ ...t, purse:rules.totalPurse, players:(teams.find(x => x.name===t.name)?.players ?? []).filter(pl => pl.icon) }));
     setPlayers(rp); setTeams(rt); setCur(0); setSelTeam(0); setOverlay(null); setFilter("all"); setActivity([]); setLastSnapshot(null); setBids([]); setTie(undefined); setGoing(0);
   }
   function deletePlayer() {

@@ -1,4 +1,4 @@
-import type { Player, ColumnMap, RulesConfig, Bid, Tie } from "./types";
+import type { Player, Team, TeamDef, ColumnMap, RulesConfig, Bid, Tie } from "./types";
 
 export const fmt = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
 export const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -53,7 +53,7 @@ export function normPlayer(p: Partial<Player>, serial: number, minBase = 300): P
     photo: p.photo?.trim() || "", availabilityUncertain: Boolean(p.availabilityUncertain),
     manuallyAdded: Boolean(p.manuallyAdded),
     status: (p.status === "sold" || p.status === "unsold") ? p.status : "available",
-    soldTo: p.soldTo, soldPrice: p.soldPrice,
+    soldTo: p.soldTo, soldPrice: p.soldPrice, ...(p.icon ? { icon: true } : {}),
   };
 }
 /** Identity for de-duplicating players. Leaves out the base price: an unsold round can lower it. */
@@ -64,6 +64,21 @@ export function mergePlayers(a: Player[], b: Player[]) {
   const seen = new Set<string>();
   return [...a,...b].filter(p => { const id=playerKey(p); if(seen.has(id)) return false; seen.add(id); return true; });
 }
+
+/** Fresh teams with each icon player already in the squad (first, at price 0). Icons don't fill the
+    registration form, so they are never in the auction pool: they join by name only. */
+export function withIcons(defs: TeamDef[], pool: Player[], totalPurse: number, minBase: number): { teams: Team[]; players: Player[] } {
+  const teams = defs.map((d, ti) => {
+    const name = d.icon?.trim();
+    if (!name) return { ...d, purse: totalPurse, players: [] };
+    const icon: Player = { ...normPlayer({ name, serialNo: -(ti + 1) }, -(ti + 1), minBase), role: "Icon", icon: true, status: "sold", soldTo: d.name, soldPrice: 0 };
+    return { ...d, purse: totalPurse, players: [icon] };
+  });
+  return { teams, players: pool };
+}
+/** Icons first, then by price, highest first. */
+export const byIconThenPrice = (a: { icon?: boolean; soldPrice?: number }, b: { icon?: boolean; soldPrice?: number }) =>
+  Number(!!b.icon) - Number(!!a.icon) || (b.soldPrice ?? 0) - (a.soldPrice ?? 0);
 
 export function timeAgo(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
