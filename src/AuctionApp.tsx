@@ -9,6 +9,8 @@ import { fmt, playerKey, mergePlayers, timeAgo, canAfford, calcMax, bidStepAt, s
 import { rdState, wrState, rdManual, wrManual, downloadBackup } from "./storage";
 import { RestoreButton } from "./components/RestoreButton";
 import { PhotoAvatar } from "./components/PhotoAvatar";
+import { TeamAvatar } from "./components/TeamAvatar";
+import { teamInitials } from "./logo";
 import { UserBadge } from "./components/UserBadge";
 import { TeamRoster } from "./components/TeamRoster";
 import { AddPlayerModal } from "./components/AddPlayerModal";
@@ -796,13 +798,15 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
                         {i < 9 && <span style={{ position:"absolute", top:5, left:7, fontSize:10, fontWeight:800, color:"#3d5070" }}>{i+1}</span>}
                         {(leading || isMatched) && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#050a14", background:t.color, borderRadius:6, padding:"1px 5px" }}>{leading && !matched.length ? "LEAD" : "TIE"}</span>}
                         {matchable && !jumpOk && <span style={{ position:"absolute", top:4, right:5, fontSize:9, fontWeight:900, letterSpacing:".5px", color:"#f0c040", border:"1px solid #8a6a10", borderRadius:6, padding:"0 4px" }}>MATCH?</span>}
-                        <div style={{ width:40, height:40, borderRadius:"50%",
-                          background:`linear-gradient(135deg, ${t.color}22, ${t.color}55)`,
-                          border:`2px solid ${hot?t.color:t.color+"66"}`,
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:14, fontWeight:900, color:t.color, flexShrink:0 }}>
-                          {t.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
-                        </div>
+                        {t.logo ? <TeamAvatar team={t} size={40} style={{ borderColor: hot ? t.color : t.color+"66" }} /> : (
+                          <div style={{ width:40, height:40, borderRadius:"50%",
+                            background:`linear-gradient(135deg, ${t.color}22, ${t.color}55)`,
+                            border:`2px solid ${hot?t.color:t.color+"66"}`,
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            fontSize:14, fontWeight:900, color:t.color, flexShrink:0 }}>
+                            {teamInitials(t.name)}
+                          </div>
+                        )}
                         <span style={{ fontSize:12, fontWeight:700, color:hot?t.color:"#90a4d4", textAlign:"center", lineHeight:1.25, wordBreak:"break-word" }}>{t.name}</span>
                         <span style={{ fontSize:12, color:"#6a80aa", fontWeight:600 }}>{fmt(t.purse)}</span>
                         <span style={{ fontSize:11, color:blocked?"#ff5f57":"#4a6080", fontWeight:600 }}>{full ? "SQUAD FULL" : `max ${fmt(maxBid(t))}`}</span>

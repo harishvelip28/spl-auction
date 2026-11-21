@@ -8,7 +8,7 @@ export interface Player {
   /** The team's icon player: given to the team before the auction (price 0), listed first in its squad. */
   icon?: boolean;
 }
-export interface Team { name: string; color: string; purse: number; players: Player[]; }
+export interface Team { name: string; color: string; purse: number; players: Player[]; owner?: string; logo?: string; }
 export interface LeagueConfig { name: string; year: string; logo: string; }
 export interface RulesConfig {
   totalPurse: number; minPlayers: number; bidStep: number; defaultBasePrice: number;
@@ -20,7 +20,15 @@ export interface RulesConfig {
   callSeconds?: number;
 }
 export interface BidTier { from: number; step: number; }
-export interface TeamDef { name: string; color: string; /** Icon player's name, already in the team before bidding starts. */ icon?: string; }
+export interface TeamDef {
+  name: string; color: string;
+  /** Icon player's name, already in the team before bidding starts. */
+  icon?: string;
+  /** Team owner's name, shown with the team. */
+  owner?: string;
+  /** Team logo as a small image data URL (see shrinkLogo); falls back to initials. */
+  logo?: string;
+}
 export interface ColumnMap {
   name: string; photo: string; skills: string; address: string;
   mobile: string; availability: string; basePrice: string;

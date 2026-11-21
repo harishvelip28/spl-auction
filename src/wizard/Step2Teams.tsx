@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { TeamDef, AuctionConfig } from "../types";
 import { PRESET_COLORS } from "../constants";
 import { wizInp, wizLbl } from "./styles";
+import { TeamAvatar } from "../components/TeamAvatar";
+import { shrinkLogo } from "../logo";
 
 const splitNames = (txt: string) => {
   const seen = new Set<string>();
@@ -44,8 +46,15 @@ export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
     onChange({ ...cfg, teams: t });
   };
   const updTeam = (i: number, key: keyof TeamDef, val: string) => {
-    const t = [...cfg.teams]; t[i] = { ...t[i], [key]: val };
+    // Optional fields are dropped when cleared rather than saved as "".
+    const optional = key === "owner" || key === "logo";
+    const t = [...cfg.teams]; t[i] = { ...t[i], [key]: optional && !val ? undefined : val };
     onChange({ ...cfg, teams: t });
+  };
+  const pickLogo = async (i: number, f: File | undefined) => {
+    if (!f) return;
+    try { updTeam(i, "logo", await shrinkLogo(f)); }
+    catch { alert("Could not read that image. Try a PNG or JPG file."); }
   };
 
   return (
@@ -68,7 +77,7 @@ export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
         )}
       </div>
       <div style={{ fontSize:13, color:"#4a6080", marginBottom:4, textTransform:"uppercase", letterSpacing:".5px", fontWeight:600 }}>
-        {cfg.teams.length} Teams — click a team to rename it
+        {cfg.teams.length} Teams — click a name to rename it, the circle to add a logo
       </div>
       {cfg.teams.map((team, i) => (
         <div key={i} style={{ display:"flex", alignItems:"center", gap:10, background:"#07101e", border:"1px solid #1a2d50", borderRadius:9, padding:"10px 14px" }}>
@@ -89,14 +98,33 @@ export function Step2Teams({ cfg, onChange }: { cfg: AuctionConfig; onChange:(c:
               </div>
             )}
           </div>
-          {/* Name */}
-          {editIdx===i ? (
-            <input autoFocus style={{ ...wizInp, flex:1, padding:"6px 10px", fontSize:15 }} value={team.name}
-              onChange={e=>updTeam(i,"name",e.target.value)} onBlur={()=>setEditIdx(null)}
-              onKeyDown={e=>{ if(e.key==="Enter") setEditIdx(null); }} />
-          ) : (
-            <span onClick={()=>setEditIdx(i)} style={{ flex:1, fontSize:16, color:"#fff", fontWeight:600, cursor:"text" }}>{team.name}</span>
-          )}
+          {/* Logo */}
+          <div style={{ position:"relative", flexShrink:0 }}>
+            <label title={team.logo ? "Change logo" : "Add logo"} style={{ display:"block", cursor:"pointer" }}>
+              {team.logo
+                ? <TeamAvatar team={team} size={40} />
+                : <div style={{ width:40, height:40, borderRadius:"50%", border:"2px dashed #2a3d60", display:"flex", alignItems:"center", justifyContent:"center",
+                    color:"#4a6080", fontSize:10, fontWeight:700, lineHeight:1.1, textAlign:"center" }}>+<br/>logo</div>}
+              <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f = e.target.files?.[0]; e.target.value = ""; void pickLogo(i, f); }} />
+            </label>
+            {team.logo && (
+              <button onClick={()=>updTeam(i,"logo","")} title="Remove logo"
+                style={{ position:"absolute", top:-5, right:-6, width:17, height:17, borderRadius:"50%", border:"1px solid #2a3d60", background:"#0c1830",
+                  color:"#90a4d4", fontSize:10, lineHeight:1, padding:0, cursor:"pointer" }}>✕</button>
+            )}
+          </div>
+          {/* Name + owner */}
+          <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:4, textAlign:"left" }}>
+            {editIdx===i ? (
+              <input autoFocus style={{ ...wizInp, padding:"6px 10px", fontSize:15 }} value={team.name}
+                onChange={e=>updTeam(i,"name",e.target.value)} onBlur={()=>setEditIdx(null)}
+                onKeyDown={e=>{ if(e.key==="Enter") setEditIdx(null); }} />
+            ) : (
+              <span onClick={()=>setEditIdx(i)} style={{ fontSize:16, color:"#fff", fontWeight:600, cursor:"text" }}>{team.name}</span>
+            )}
+            <input value={team.owner ?? ""} onChange={e=>updTeam(i,"owner",e.target.value)} placeholder="Owner name (optional)"
+              style={{ ...wizInp, padding:"4px 10px", fontSize:13 }} />
+          </div>
           {iconNames.length > 0 && (
             <select value={iconNames.find(n => n.toLowerCase() === team.icon?.trim().toLowerCase()) ?? ""} onChange={e=>setIcon(i, e.target.value)}
               title="Icon player" style={{ ...wizInp, width:170, flexShrink:0, padding:"6px 8px", fontSize:14, cursor:"pointer", color: team.icon ? "#f0c040" : "#6a80aa" }}>

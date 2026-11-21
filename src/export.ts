@@ -29,7 +29,8 @@ function buildTeamHtml(team: Team, totalPurse: number) {
       }).join("")
     : `<tr><td ${td} colspan="6">No players bought yet</td></tr>`;
   return `
-    <h2 style="color:${escHtml(team.color)};font-family:Calibri,Arial,sans-serif;margin:0 0 8px;">${escHtml(team.name)}</h2>
+    <h2 style="color:${escHtml(team.color)};font-family:Calibri,Arial,sans-serif;margin:0 0 ${team.owner?.trim() ? 2 : 8}px;">${escHtml(team.name)}</h2>
+    ${team.owner?.trim() ? `<p style="font-family:Calibri,Arial,sans-serif;color:#444;margin:0 0 8px;">Owner: <b>${escHtml(team.owner.trim())}</b></p>` : ""}
     <table style="border-collapse:collapse;margin-bottom:12px;font-family:Calibri,Arial,sans-serif;font-size:11pt;">
       <tr><th ${th}>Players</th><th ${th}>Purse Spent</th><th ${th}>Purse Left</th><th ${th}>Avg Bid</th></tr>
       <tr><td ${td}>${team.players.length}</td><td ${td}>${escHtml(fmt(spent))}</td><td ${td}>${escHtml(fmt(team.purse))}</td><td ${td}>${bought ? escHtml(fmt(avg)) : "—"}</td></tr>
@@ -72,8 +73,21 @@ export function buildTeamsPdf(title: string, teamList: Team[], totalPurse: numbe
     doc.text(title, marginX, y);
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor("#666666");
     doc.text(generated, marginX, y += 14);
+    if (team.logo) {
+      const box = 56;   // fit inside a box at the top right, keeping the logo's shape
+      try {
+        const { width, height } = doc.getImageProperties(team.logo);
+        const k = box / Math.max(width, height), w = width * k, h = height * k;
+        doc.addImage(team.logo, doc.internal.pageSize.getWidth() - marginX - w, 30 + (box - h) / 2, w, h);
+      }
+      catch { /* unreadable logo: leave it out */ }
+    }
     doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(team.color || "#1a2d50");
     doc.text(team.name, marginX, y += 28);
+    if (team.owner?.trim()) {
+      doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor("#444444");
+      doc.text(`Owner: ${team.owner.trim()}`, marginX, y += 16);
+    }
 
     const spent = totalPurse - team.purse;
     const bought = team.players.filter(p => !p.icon).length;

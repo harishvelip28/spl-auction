@@ -1,5 +1,6 @@
 import type { AuctionConfig, Player } from "../types";
 import { fmt, callSecs } from "../utils";
+import { TeamAvatar } from "../components/TeamAvatar";
 
 /* Step 5: Review */
 export function Step5Review({ cfg, players }: { cfg: AuctionConfig; players: Player[] }) {
@@ -31,8 +32,9 @@ export function Step5Review({ cfg, players }: { cfg: AuctionConfig; players: Pla
         <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
           {cfg.teams.map(t => (
             <div key={t.name} style={{ display:"flex", alignItems:"center", gap:6, background:"#0c1830", border:"1px solid #1a2d50", borderRadius:20, padding:"4px 12px" }}>
-              <div style={{ width:10, height:10, borderRadius:"50%", background:t.color }} />
+              {t.logo ? <TeamAvatar team={t} size={20} border={1} /> : <div style={{ width:10, height:10, borderRadius:"50%", background:t.color }} />}
               <span style={{ fontSize:14, color:"#fff", fontWeight:600 }}>{t.name}</span>
+              {t.owner?.trim() && <span style={{ fontSize:13, color:"#90a4d4" }}>· {t.owner.trim()}</span>}
               {t.icon?.trim() && <span style={{ fontSize:13, color:"#f0c040", fontWeight:600 }}>⭐ {t.icon.trim()}</span>}
             </div>
           ))}

@@ -5,6 +5,7 @@ import { ROLE_STYLE, UNCERTAIN_BADGE, MANUAL_BADGE } from "../constants";
 import { fmt, calcMax, squadFull } from "../utils";
 import { PhotoAvatar } from "./PhotoAvatar";
 import { buildTeamsDoc, buildTeamsPdf, safeFileName } from "../export";
+import { TeamAvatar } from "./TeamAvatar";
 
 export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: AuctionConfig; onClose:()=>void }) {
   const [tab, setTab] = useState(0);
@@ -79,7 +80,18 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
             </button>
           ))}
         </div>
-        <div style={{ display:"flex", gap:28, padding:"14px 22px", borderBottom:"1px solid #1a2d50", background:"#060e1b", flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:28, padding:"14px 22px", borderBottom:"1px solid #1a2d50", background:"#060e1b", flexWrap:"wrap", alignItems:"center" }}>
+          {(team.logo || team.owner?.trim()) && (
+            <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+              <TeamAvatar team={team} size={48} />
+              {team.owner?.trim() && (
+                <div>
+                  <div style={{ fontSize:17, fontWeight:800, color:"#fff" }}>{team.owner.trim()}</div>
+                  <div style={{ fontSize:12, color:"#4a6080", textTransform:"uppercase", letterSpacing:".5px", marginTop:2 }}>Owner</div>
+                </div>
+              )}
+            </div>
+          )}
           {[
             { label:"Players",     val:`${team.players.length}/${minPlayers} min`,                      color:team.players.length>=minPlayers?"#30d158":"#f0c040" },
             { label:"Purse spent", val:fmt(spent),                                                      color:"#f0c040" },
