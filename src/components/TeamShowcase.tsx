@@ -3,6 +3,7 @@ import type React from "react";
 import type { RulesConfig, Team } from "../types";
 import { fmt, calcMax, squadFull, byIconThenPrice } from "../utils";
 import { ROLE_STYLE } from "../constants";
+import { TeamAvatar } from "./TeamAvatar";
 
 /* Projector "team view": cycles through every team's squad — purse, max bid, players bought and
    role mix — so the hall can see where each team stands between players. Turned on from the console. */
@@ -10,7 +11,6 @@ import { ROLE_STYLE } from "../constants";
 export const SHOWCASE_SECS = 9;
 const ROLES = ["Batsman", "Bowler", "All-Rounder", "Wicket Keeper"];
 let resumeAt = 0;
-const initials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 export function TeamShowcase({ teams, rules, league }: {
   teams: Team[];
@@ -67,10 +67,10 @@ export function TeamShowcase({ teams, rules, league }: {
       <div key={idx} className="ts-in" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 22, padding: "28px 40px 20px", borderTop: `6px solid ${t.color}` }}>
         {/* Team name */}
         <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
-          <div style={{ width: 92, height: 92, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            background: `${t.color}33`, border: `4px solid ${t.color}`, color: t.color, fontWeight: 900, fontSize: 36 }}>{initials(t.name)}</div>
+          <TeamAvatar team={t} size={t.logo ? 120 : 92} border={4} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: "clamp(40px, 4.6vw, 72px)", fontWeight: 900, color: t.color, lineHeight: 1.05, textShadow: `0 0 40px ${t.color}55` }}>{t.name}</div>
+            {t.owner?.trim() && <div style={{ fontSize: 24, fontWeight: 700, color: "#c0d4f0", marginTop: 6 }}>Owner: {t.owner.trim()}</div>}
             <div style={{ fontSize: 22, fontWeight: 700, color: need ? "#f0a030" : "#30d158", marginTop: 4 }}>
               {full ? "Squad full" : need ? `Needs ${need} more player${need > 1 ? "s" : ""}` : "Minimum squad complete ✓"}
             </div>

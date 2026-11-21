@@ -169,6 +169,7 @@ export function OwnerView({ id }: { id: string }) {
         {my && (
           <div style={{ ...card, borderTop:`4px solid ${my.color}` }}>
             <div style={{ fontSize:16, fontWeight:900, color:my.color }}>{my.name}</div>
+            {my.owner && <div style={{ fontSize:13, color:"#90a4d4", marginTop:2 }}>Owner: {my.owner}</div>}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8, marginTop:10 }}>
               {[
                 { l:"Purse left", v:fmt(my.purse), c:"#fff" },
@@ -251,7 +252,10 @@ function TeamPicker({ snap, onPick }: { snap: LiveSnapshot; onPick: (name: strin
                 border:`2px solid ${t.color}`, background:`${t.color}18`, color:t.color, fontWeight:900, fontSize:15 }}>
               <span style={{ width:32, height:32, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
                 background:`${t.color}33`, fontSize:12 }}>{initials(t.name)}</span>
-              <span style={{ minWidth:0, wordBreak:"break-word" }}>{t.name}</span>
+              <span style={{ minWidth:0, wordBreak:"break-word" }}>
+                {t.name}
+                {t.owner && <span style={{ display:"block", fontSize:12, fontWeight:600, color:"#90a4d4", marginTop:2 }}>{t.owner}</span>}
+              </span>
             </button>
           ))}
         </div>

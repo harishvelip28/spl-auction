@@ -1,11 +1,11 @@
 import type React from "react";
 import type { AuctionConfig, Player, Team } from "../types";
 import { fmt, byIconThenPrice } from "../utils";
+import { TeamAvatar } from "./TeamAvatar";
 
 /* End-of-auction summary: headline numbers, highlights and every squad side by side.
    Used on the console (#summary, downloadable as an image) and on the projector. */
 
-const initials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 const ROLE_SHORT: Record<string, string> = { "Batsman":"BAT", "Bowler":"BOWL", "All-Rounder":"AR", "Wicket Keeper":"WK" };
 
 export function AuctionSummary({ config, players, teams, projector = false, innerRef }: {
@@ -97,10 +97,10 @@ export function AuctionSummary({ config, players, teams, projector = false, inne
           return (
             <div key={t.name} style={{ background:"#07101e", border:"1px solid #1a2d50", borderTop:`4px solid ${t.color}`, borderRadius:12, padding:"12px 14px", minWidth:0, overflow:"hidden" }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:px(34), height:px(34), borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                  background:`${t.color}33`, border:`2px solid ${t.color}`, color:t.color, fontWeight:900, fontSize:px(13) }}>{initials(t.name)}</div>
+                <TeamAvatar team={t} size={px(34)} />
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:px(17), fontWeight:900, color:t.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
+                  {t.owner?.trim() && <div style={{ fontSize:px(12), color:"#90a4d4", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>Owner: {t.owner.trim()}</div>}
                   <div style={{ fontSize:px(12), color:"#6a80aa" }}>{t.players.length} players · spent {fmt(teamSpent(t))} · left {fmt(t.purse)}</div>
                 </div>
               </div>

@@ -9,6 +9,7 @@ import { rdCfg, rdState, rdManual } from "./storage";
 import { onDisplay, type DisplayEvent } from "./displayChannel";
 import { PhotoAvatar } from "./components/PhotoAvatar";
 import { DRAW_STEPS, DRAW_END } from "./sounds";
+import { TeamAvatar } from "./components/TeamAvatar";
 
 /* Audience screen for the projector (opened from the console's 📺 Display button, at /#display).
    Read-only: follows the operator window through localStorage, shows no contact details and no controls. */
@@ -26,7 +27,6 @@ const toggleFullscreen = () => {
   else void document.documentElement.requestFullscreen?.().catch(() => {});
 };
 
-const initials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 export function DisplayView() {
   const [{ cfg, st }, setData] = useState(load);
@@ -219,7 +219,7 @@ export function DisplayView() {
             {avail && (leadTeam ? (
               <div style={{ display:"inline-flex", alignSelf:"flex-start", alignItems:"center", gap:12, padding:"10px 22px", borderRadius:40,
                 background:`${leadTeam.color}26`, border:`2px solid ${leadTeam.color}`, color:leadTeam.color, fontSize:28, fontWeight:900 }}>
-                <span style={{ width:16, height:16, borderRadius:"50%", background:leadTeam.color }} />
+                {leadTeam.logo ? <TeamAvatar team={leadTeam} size={34} /> : <span style={{ width:16, height:16, borderRadius:"50%", background:leadTeam.color }} />}
                 {leadTeam.name}
               </div>
             ) : (
@@ -301,6 +301,10 @@ export function DisplayView() {
               const text  = event.type === "sold" ? "SOLD!" : event.type === "unsold" ? "UNSOLD" : "UNSOLD ROUND";
               return <div className="dv-pop" style={{ fontSize:"clamp(80px, 11vw, 180px)", fontWeight:900, letterSpacing:6, color, textShadow:`0 0 60px ${color}` }}>{text}</div>;
             })()}
+            {event.type === "sold" && (() => {
+              const t = st.teams.find(x => x.name === event.team);
+              return t?.logo ? <TeamAvatar team={t} size={150} border={5} style={{ boxShadow:`0 0 50px ${t.color}` }} /> : null;
+            })()}
             {event.type === "sold" && (
               <div className="dv-pop" style={{ fontSize:"clamp(26px, 3vw, 44px)", fontWeight:800, textAlign:"center", padding:"0 24px", textShadow:"0 2px 10px rgba(0,0,0,.8)" }}>
                 {event.player} → <span style={{ color:event.color }}>{event.team}</span> · {fmt(event.price)}
@@ -333,10 +337,9 @@ export function DisplayView() {
             <div key={t.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:12, minWidth:0,
               border:`2px solid ${leading ? t.color : "#1a2d50"}`, background: leading ? `${t.color}22` : "#06101e",
               boxShadow: leading ? `0 0 24px ${t.color}66` : "none", transition:"all .2s" }}>
-              <div style={{ width:38, height:38, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                background:`${t.color}33`, border:`2px solid ${t.color}`, color:t.color, fontWeight:900, fontSize:14 }}>{initials(t.name)}</div>
+              <TeamAvatar team={t} size={38} />
               <div style={{ minWidth:0 }}>
-                <div style={{ fontSize:16, fontWeight:800, color:t.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.name}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:t.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }} title={t.owner ? `Owner: ${t.owner}` : undefined}>{t.name}</div>
                 <div style={{ fontSize:20, fontWeight:900, color:"#fff" }}>{fmt(t.purse)}</div>
                 <div style={{ fontSize:13, color:"#6a80aa" }}>{t.players.length}{rules.maxPlayers ? `/${rules.maxPlayers}` : ""} players{t.players.length < rules.minPlayers ? ` · need ${rules.minPlayers - t.players.length}` : ""}</div>
                 <div style={{ fontSize:13, color: full ? "#ff5f57" : "#6a80aa", fontWeight: full ? 800 : 400 }}>
