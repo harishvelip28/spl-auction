@@ -57,7 +57,7 @@ export const LEAGUE_LOGOS: LeagueLogos[] = [
       { title: "Shrisha Striker's",     file: "" },
       { title: "Shrisha Warrior's",     file: "logos/spl/shrisha-warriors.jpeg" },
       { title: "Mandev Cricketer's",    file: "" },
-      { title: "MSC Warrior's",         file: "" },
+      { title: "MSC Warrior's",         file: "logos/spl/msc-warriors.jpeg" },
     ],
   },
 ];
