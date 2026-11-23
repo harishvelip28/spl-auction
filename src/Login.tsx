@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { hasUsers, login } from "./auth";
-import { leagueBrand } from "./storage";
 
 const lbl: React.CSSProperties = { display:"block", fontSize:12, fontWeight:700, color:"#6a80aa", letterSpacing:".5px", textTransform:"uppercase", marginBottom:6, textAlign:"left" };
 const inp: React.CSSProperties = { width:"100%", padding:"12px 14px", marginBottom:18, fontSize:16, color:"#fff", background:"#0a1528", border:"1px solid #1a2d50", borderRadius:8, outline:"none" };
@@ -8,8 +7,6 @@ const inp: React.CSSProperties = { width:"100%", padding:"12px 14px", marginBott
 export default function Login({ onLogin }: { onLogin: (user: string) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [brand] = useState(leagueBrand);
-  const [logoOk, setLogoOk] = useState(true);
   const [error, setError] = useState(hasUsers() ? "" : "No members configured. Set VITE_AUCTION_USERS and rebuild.");
 
   const submit = (e: React.FormEvent) => {
@@ -27,19 +24,13 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
       <style>{`.login-inp:focus{ border-color:#f0c040!important; } *{ box-sizing:border-box; }`}</style>
       <a href="#downloads"
         style={{ fontSize:15, fontWeight:800, color:"#f0c040", textDecoration:"none", padding:"10px 18px", border:"1px solid #f0c040", borderRadius:10, background:"#07101e" }}>
-        ⬇ Player form &amp; league logo downloads
+        ⬇ Player form &amp; logo downloads
       </a>
       <form onSubmit={submit} autoComplete="on"
         style={{ width:"100%", maxWidth:400, background:"#07101e", border:"1px solid #1a2d50", borderRadius:16, padding:"36px 30px 30px", boxShadow:"0 20px 60px rgba(0,0,0,.5)" }}>
-        {brand.logo && logoOk
-          ? <img src={brand.logo} alt={brand.name} width={120} height={120} onError={() => setLogoOk(false)}
-              style={{ display:"block", width:120, height:120, margin:"0 auto 16px", borderRadius:"50%", objectFit:"cover", boxShadow:"0 0 0 3px #f0c040, 0 8px 24px rgba(0,0,0,.5)" }} />
-          : <div aria-hidden="true"
-              style={{ width:120, height:120, margin:"0 auto 16px", borderRadius:"50%", background:"#0a1528", color:"#f0c040", display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, fontWeight:900, boxShadow:"0 0 0 3px #f0c040, 0 8px 24px rgba(0,0,0,.5)" }}>
-              {brand.initials}
-            </div>}
-        <div style={{ textAlign:"center", fontSize:14, fontWeight:700, color:"#fff", marginBottom:4 }}>{brand.name}</div>
-        <div style={{ textAlign:"center", fontSize:22, fontWeight:800, color:"#f0c040", letterSpacing:".3px" }}>Player Auction Setup Login</div>
+        <div aria-hidden="true"
+          style={{ width:72, height:72, margin:"0 auto 16px", borderRadius:16, background:"#f0c040", display:"flex", alignItems:"center", justifyContent:"center", fontSize:38 }}>🏏</div>
+        <div style={{ textAlign:"center", fontSize:22, fontWeight:800, color:"#f0c040", letterSpacing:".3px" }}>Auction Setup Login</div>
         <div style={{ textAlign:"center", fontSize:12, color:"#4a6080", letterSpacing:"1.5px", textTransform:"uppercase", margin:"6px 0 28px" }}>Members only</div>
 
         {error && (
