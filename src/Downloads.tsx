@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { DOWNLOADS, LEAGUE_LOGOS, downloadUrl, driveDownloadUrl } from "./downloads";
-import { leagueBrand } from "./storage";
 
 const btn = { display:"inline-block", padding:"9px 16px", fontSize:14, fontWeight:800, borderRadius:8, textDecoration:"none", background:"#f0c040", color:"#050a14", whiteSpace:"nowrap" } as const;
 
 export default function Downloads({ onBack }: { onBack: () => void }) {
-  const [brand] = useState(leagueBrand);
-  const [logoOk, setLogoOk] = useState(true);
   const [openLeague, setOpenLeague] = useState<string | null>(null);
   const items = DOWNLOADS.filter(d => d.file || d.drive || d.link);
   const packs = LEAGUE_LOGOS.map(l => ({ ...l, logos: l.logos.filter(x => x.file) })).filter(l => l.logos.length);
@@ -15,11 +12,8 @@ export default function Downloads({ onBack }: { onBack: () => void }) {
       fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", boxSizing:"border-box" }}>
       <div style={{ maxWidth:640, margin:"0 auto" }}>
         <div style={{ textAlign:"center", marginBottom:28 }}>
-          {brand.logo && logoOk
-            ? <img src={brand.logo} alt="" width={72} height={72} onError={() => setLogoOk(false)}
-                style={{ display:"block", width:72, height:72, margin:"0 auto 16px", borderRadius:"50%", objectFit:"cover", boxShadow:"0 0 0 3px #f0c040" }} />
-            : <div style={{ width:56, height:56, margin:"0 auto 16px", borderRadius:12, background:"#f0c040", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🏏</div>}
-          <div style={{ fontSize:24, fontWeight:800, color:"#f0c040" }}>{brand.name} Downloads</div>
+          <div style={{ width:56, height:56, margin:"0 auto 16px", borderRadius:12, background:"#f0c040", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🏏</div>
+          <div style={{ fontSize:24, fontWeight:800, color:"#f0c040" }}>Downloads</div>
           <div style={{ fontSize:14, color:"#6a80aa", marginTop:6 }}>Player registration form, logos and other files</div>
         </div>
 
