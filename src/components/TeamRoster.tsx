@@ -15,9 +15,9 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
   const spent = totalPurse - team.purse;
 
   const makeDoc = (list: Team[], label: string) => {
-    const title = `SPL Auction - ${label}`;
+    const title = `${config.league.name} Auction - ${label}`;
     const blob = buildTeamsDoc(title, list, totalPurse);
-    const fileName = `SPL_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.doc`;
+    const fileName = `${safeFileName(config.league.name)}_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.doc`;
     return { title, blob, fileName };
   };
   const downloadBlob = (blob: Blob, fileName: string) => {
@@ -33,9 +33,9 @@ export function TeamRoster({ teams, config, onClose }: { teams: Team[]; config: 
   };
   // "Send" → share a PDF as a file (WhatsApp appears in the share sheet on phones).
   const sendDoc = async (list: Team[], label: string) => {
-    const title = `SPL Auction - ${label}`;
+    const title = `${config.league.name} Auction - ${label}`;
     const blob = buildTeamsPdf(title, list, totalPurse);
-    const fileName = `SPL_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const fileName = `${safeFileName(config.league.name)}_${safeFileName(label)}_${new Date().toISOString().slice(0,10)}.pdf`;
     const file = new File([blob], fileName, { type: "application/pdf" });
     if (navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file], title }); return; }
