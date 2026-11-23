@@ -32,13 +32,35 @@ export const DOWNLOADS: DownloadItem[] = [
     icon: "📄",
     drive: "1kFagpl3uIsQi1jm7Nn9hVpbaz9msnmQ_",
   },
+];
+
+/* ═══════════════════════════════════════════════════════════════════
+   LOGO PACKS — one button per league on the downloads page; it opens
+   that league's logo and its team logos, each downloadable.
+
+   To add a logo: put the image in  public/downloads/logos/<league>/
+   and set  file: "logos/<league>/<name>.png"  below.
+   Entries with an empty file are hidden until the image is added.
+   For a new league, copy the SPL block and change the names and files.
+═══════════════════════════════════════════════════════════════════ */
+
+export interface LogoItem { title: string; file: string; }
+export interface LeagueLogos { league: string; logos: LogoItem[]; }
+
+export const LEAGUE_LOGOS: LeagueLogos[] = [
   {
-    title: "SPL Logo",
-    description: "Official league logo for posters, jerseys and social media.",
-    icon: "🏏",
-    drive: "1NRODCxnYs4lZywwlvoQQbDWOKLDKkHMD",
+    league: "Shigao Premier League",
+    logos: [
+      { title: "Shigao Premier League", file: "logos/spl/shigao-premier-league.png" },
+      { title: "Ajoba Warrior's",       file: "logos/spl/ajoba-warriors.jpeg" },
+      { title: "Parthvik Jaguar's",     file: "logos/spl/parthvik-jaguars.jpeg" },
+      { title: "Shrisha Striker's",     file: "" },
+      { title: "Shrisha Warrior's",     file: "logos/spl/shrisha-warriors.jpeg" },
+      { title: "Mandev Cricketer's",    file: "" },
+      { title: "MSC Warrior's",         file: "" },
+    ],
   },
 ];
 
 export const driveDownloadUrl = (id: string) => `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
-export const downloadUrl = (file: string) => `${import.meta.env.BASE_URL}downloads/${encodeURIComponent(file)}`;
+export const downloadUrl = (file: string) => `${import.meta.env.BASE_URL}downloads/${file.split("/").map(encodeURIComponent).join("/")}`;
