@@ -1,19 +1,9 @@
 import type { Player, AuctionConfig, AuctionState } from "./types";
-import { CONFIG_KEY, STATE_KEY, MANUAL_KEY, DEFAULT_CONFIG } from "./constants";
+import { CONFIG_KEY, STATE_KEY, MANUAL_KEY } from "./constants";
 import { normPlayer, mergePlayers } from "./utils";
 
 export const rdCfg = (): AuctionConfig|null => { try { const s=localStorage.getItem(CONFIG_KEY); return s?JSON.parse(s):null; } catch{return null;} };
 export const wrCfg = (c: AuctionConfig) => { try { localStorage.setItem(CONFIG_KEY,JSON.stringify(c)); } catch{} };
-
-/** League name + logo for pages shown before login (Login, Downloads), from the saved Setup.
-    The bundled SPL logo is only used for the default league, so another league never shows it. */
-export function leagueBrand(): { name: string; logo: string; initials: string } {
-  const league = rdCfg()?.league;
-  const name = league?.name?.trim() || DEFAULT_CONFIG.league.name;
-  const logo = league?.logo || (name === DEFAULT_CONFIG.league.name ? `${import.meta.env.BASE_URL}spl-logo.png` : "");
-  const initials = name.split(/\s+/).map(w => w[0] ?? "").join("").slice(0, 3).toUpperCase();
-  return { name, logo, initials };
-}
 
 export function rdState(cfg: AuctionConfig, manual: Player[]): AuctionState|null {
   try {
