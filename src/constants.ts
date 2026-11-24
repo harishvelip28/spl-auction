@@ -1,15 +1,17 @@
 import type React from "react";
 import type { TeamDef, ColumnMap, AuctionConfig } from "./types";
+import { leagueKey, LEAGUES, type League } from "./leagues";
 
-export const CONFIG_KEY = "auction-config-v2";
-export const STATE_KEY  = "auction-state-v2";
-export const MANUAL_KEY = "auction-manual-v2";
+/* Storage keys are per league (see leagues.ts), so they are functions. */
+export const CONFIG_KEY = () => leagueKey("auction-config-v2");
+export const STATE_KEY  = () => leagueKey("auction-state-v2");
+export const MANUAL_KEY = () => leagueKey("auction-manual-v2");
 /** "1" while the console has put the auction summary on the projector. */
-export const SUMMARY_KEY = "auction-display-summary-v1";
+export const SUMMARY_KEY = () => leagueKey("auction-display-summary-v1");
 /** "1" while the console has the cycling team-squad view on the projector. */
-export const TEAMS_KEY = "auction-display-teams-v1";
+export const TEAMS_KEY = () => leagueKey("auction-display-teams-v1");
 
-const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVKm1zcwXbaj8Ui3jQl_1fJPU-4ZN3G9V1Dd2vRX6rWdAlkInpTHj5VMrLVjjIsvVlD4SkPal7V3Xc/pub?gid=98031908&single=true&output=csv";
+const DEFAULT_CSV = LEAGUES[0].csv;
 
 const DEFAULT_TEAMS: TeamDef[] = [
   { name: "Ajoba Warrior's",    color: "#e53935" },
@@ -26,6 +28,16 @@ export const DEFAULT_CONFIG: AuctionConfig = {
   teams:  DEFAULT_TEAMS,
   csv:    { url: DEFAULT_CSV, columnMap: {} },
 };
+
+/** Starting setup for a league: SPL gets its teams; other leagues start with placeholder
+    teams to rename during setup. Each league starts with its own sheet from leagues.ts. */
+export const defaultConfig = (league: League | null): AuctionConfig =>
+  !league || league.id === "spl" ? DEFAULT_CONFIG : {
+    ...DEFAULT_CONFIG,
+    league: { ...DEFAULT_CONFIG.league, name: league.name },
+    teams: [1, 2, 3, 4].map(n => ({ name: `Team ${n}`, color: PRESET_COLORS[n - 1] })),
+    csv: { url: league.csv, columnMap: {} },
+  };
 
 export const PRESET_COLORS = [
   "#e53935","#fb8c00","#fdd835","#43a047",
