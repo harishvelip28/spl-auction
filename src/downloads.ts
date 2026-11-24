@@ -33,10 +33,16 @@ export const DOWNLOADS: DownloadItem[] = [
     link: "https://docs.google.com/forms/d/e/1FAIpQLScf47ogrqMZbXE34T-746SJz2-o9p0dy7FWKgOAtJRVq0Natg/viewform",
   },
   {
-    title: "Player Form (printable)",
+    title: "Shigao Premier League – Player Form (printable)",
     description: "Download, print on A4, fill in and hand it to the organiser.",
     icon: "📄",
     drive: "1kFagpl3uIsQi1jm7Nn9hVpbaz9msnmQ_",
+  },
+  {
+    title: "Dharbandora Cricket League – Player Form (printable)",
+    description: "Download, print on A4, fill in and hand it to the organiser.",
+    icon: "📄",
+    file: "dcl-player-form.png",
   },
 ];
 
