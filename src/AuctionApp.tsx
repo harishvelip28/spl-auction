@@ -107,18 +107,18 @@ export function AuctionApp({ config, initPlayers, onSetup, user }: {
   }, [players, teams, cur, selTeam, activity, bids, tie]);
   const backup = () => downloadBackup(config, { players, teams, cur, selTeam, activity, bids, tie }, manualPlayers);
   // Auction summary: shown on the projector while this flag is set (the display window watches localStorage).
-  const [summaryOnProj, setSummaryOnProj] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } });
+  const [summaryOnProj, setSummaryOnProj] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY()) === "1"; } catch { return false; } });
   const setProjSummary = (on: boolean) => {
     setSummaryOnProj(on);
     if (on) setProjTeams(false);
-    try { if (on) localStorage.setItem(SUMMARY_KEY, "1"); else localStorage.removeItem(SUMMARY_KEY); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
+    try { if (on) localStorage.setItem(SUMMARY_KEY(), "1"); else localStorage.removeItem(SUMMARY_KEY()); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
   };
   // Team view: the projector cycles through every squad (it steps aside by itself while bids are open).
-  const [teamsOnProj, setTeamsOnProj] = useState(() => { try { return localStorage.getItem(TEAMS_KEY) === "1"; } catch { return false; } });
+  const [teamsOnProj, setTeamsOnProj] = useState(() => { try { return localStorage.getItem(TEAMS_KEY()) === "1"; } catch { return false; } });
   function setProjTeams(on: boolean) {
     setTeamsOnProj(on);
-    if (on && summaryOnProj) { setSummaryOnProj(false); try { localStorage.removeItem(SUMMARY_KEY); } catch { /* ignore */ } }
-    try { if (on) localStorage.setItem(TEAMS_KEY, "1"); else localStorage.removeItem(TEAMS_KEY); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
+    if (on && summaryOnProj) { setSummaryOnProj(false); try { localStorage.removeItem(SUMMARY_KEY()); } catch { /* ignore */ } }
+    try { if (on) localStorage.setItem(TEAMS_KEY(), "1"); else localStorage.removeItem(TEAMS_KEY()); } catch { notify("Could not reach the projector window (browser storage blocked)."); }
   }
   const summaryRef = React.useRef<HTMLDivElement>(null);
   async function downloadSummary() {

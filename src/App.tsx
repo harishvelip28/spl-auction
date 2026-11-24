@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import Login from "./Login";
 import Downloads from "./Downloads";
+import LeaguePicker from "./LeaguePicker";
+import { ACTIVE_LEAGUE_KEY, activeLeague } from "./leagues";
 import { currentUser } from "./auth";
 import type { Player, AuctionConfig } from "./types";
 import { mergePlayers, fetchPlayers } from "./utils";
@@ -27,8 +29,11 @@ export default function App() {
   const [ownerId, setOwnerId] = useState(liveId);
   useEffect(() => {
     const onHash = () => { setShowDownloads(window.location.hash === "#downloads"); setShowDisplay(window.location.hash === "#display"); setOwnerId(liveId()); };
+    // Another window switched league: reload so this one (console or projector) follows it.
+    const onStorage = (e: StorageEvent) => { if (e.key === ACTIVE_LEAGUE_KEY) location.reload(); };
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    window.addEventListener("storage", onStorage);
+    return () => { window.removeEventListener("hashchange", onHash); window.removeEventListener("storage", onStorage); };
   }, []);
   const leaveDownloads = () => {
     history.pushState(null, "", window.location.pathname + window.location.search);
@@ -55,6 +60,7 @@ export default function App() {
   if (showDownloads) return <Downloads onBack={leaveDownloads} />;
   if (!user) return <Login onLogin={setUser} />;
   if (showDisplay) return <DisplayView />;
+  if (!activeLeague()) return <LeaguePicker user={user} />;
   if (!config || showSetup) {
     return <SetupWizard existingConfig={config} onLaunch={handleLaunch} user={user} />;
   }

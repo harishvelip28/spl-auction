@@ -11,6 +11,7 @@
 ═══════════════════════════════════════════════════════════════════ */
 import type { ActivityEntry, AuctionConfig, Bid, Player, RulesConfig, Status, Team, Tie } from "./types";
 import { tiedTeams } from "./utils";
+import { leagueKey } from "./leagues";
 
 const env = import.meta.env;
 const FB = {
@@ -157,7 +158,7 @@ export function subscribe(id: string, on: {
 }
 
 // ── Console's sharing state (which link, on/off) ─────────────────────
-const SHARE_KEY = "auction-live-share-v1";
+const SHARE_KEY = () => leagueKey("auction-live-share-v1"); // one phone link per league
 export interface ShareState { id: string; on: boolean; }
 export const newLiveId = () => {
   const b = new Uint8Array(12);
@@ -165,7 +166,7 @@ export const newLiveId = () => {
   return Array.from(b, x => (x % 36).toString(36)).join("");
 };
 export const rdShare = (): ShareState | null => {
-  try { const s = localStorage.getItem(SHARE_KEY); return s ? JSON.parse(s) as ShareState : null; } catch { return null; }
+  try { const s = localStorage.getItem(SHARE_KEY()); return s ? JSON.parse(s) as ShareState : null; } catch { return null; }
 };
-export const wrShare = (s: ShareState) => { try { localStorage.setItem(SHARE_KEY, JSON.stringify(s)); } catch { /* sharing still works this session */ } };
+export const wrShare = (s: ShareState) => { try { localStorage.setItem(SHARE_KEY(), JSON.stringify(s)); } catch { /* sharing still works this session */ } };
 export const liveUrl = (id: string) => `${window.location.origin}${window.location.pathname}#live/${id}`;

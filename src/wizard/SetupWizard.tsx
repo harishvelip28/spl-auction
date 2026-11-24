@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Player, AuctionConfig } from "../types";
-import { DEFAULT_CONFIG } from "../constants";
+import { defaultConfig } from "../constants";
+import { activeLeague } from "../leagues";
 import { wrCfg, clrState } from "../storage";
 import { RestoreButton } from "../components/RestoreButton";
 import { UserBadge } from "../components/UserBadge";
@@ -18,7 +19,7 @@ export function SetupWizard({ existingConfig, onLaunch, user }: {
   onLaunch: (cfg: AuctionConfig, players: Player[]) => void;
 }) {
   const [step, setStep] = useState(1);
-  const [cfg, setCfg] = useState<AuctionConfig>(existingConfig ?? DEFAULT_CONFIG);
+  const [cfg, setCfg] = useState<AuctionConfig>(existingConfig ?? defaultConfig(activeLeague()));
   const [players, setPlayers] = useState<Player[]>([]);
 
   const canAdvance = step !== 4 || players.length > 0;

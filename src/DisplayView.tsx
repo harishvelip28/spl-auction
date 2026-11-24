@@ -19,8 +19,8 @@ const load = (): { cfg: AuctionConfig | null; st: AuctionState | null } => {
   return { cfg, st: cfg ? rdState(cfg, rdManual(cfg.rules.defaultBasePrice)) : null };
 };
 
-const readSummary = () => { try { return localStorage.getItem(SUMMARY_KEY) === "1"; } catch { return false; } };
-const readTeams = () => { try { return localStorage.getItem(TEAMS_KEY) === "1"; } catch { return false; } };
+const readSummary = () => { try { return localStorage.getItem(SUMMARY_KEY()) === "1"; } catch { return false; } };
+const readTeams = () => { try { return localStorage.getItem(TEAMS_KEY()) === "1"; } catch { return false; } };
 
 const toggleFullscreen = () => {
   if (document.fullscreenElement) void document.exitFullscreen();
@@ -62,9 +62,9 @@ export function DisplayView() {
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === null || e.key === STATE_KEY || e.key === CONFIG_KEY || e.key === MANUAL_KEY) setData(load());
-      if (e.key === null || e.key === SUMMARY_KEY) setShowSummary(readSummary());
-      if (e.key === null || e.key === TEAMS_KEY) setShowTeams(readTeams());
+      if (e.key === null || e.key === STATE_KEY() || e.key === CONFIG_KEY() || e.key === MANUAL_KEY()) setData(load());
+      if (e.key === null || e.key === SUMMARY_KEY()) setShowSummary(readSummary());
+      if (e.key === null || e.key === TEAMS_KEY()) setShowTeams(readTeams());
     };
     window.addEventListener("storage", onStorage);
     let timer: number | undefined;

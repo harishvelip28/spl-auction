@@ -21,10 +21,16 @@ export interface DownloadItem {
 
 export const DOWNLOADS: DownloadItem[] = [
   {
-    title: "Player Registration Form (online)",
-    description: "Fill in and submit the registration form online.",
+    title: "Shigao Premier League – Player Registration Form (online)",
+    description: "Fill in and submit the SPL registration form online.",
     icon: "📝",
     link: "https://docs.google.com/forms/d/e/1FAIpQLScJV3UGvVjw1pbPeSPQPJLt4u9BTBC6Jwh7FCoe7f69f35sAQ/viewform",
+  },
+  {
+    title: "Dharbandora Cricket League – Player Registration Form (online)",
+    description: "Fill in and submit the DCL registration form online.",
+    icon: "📝",
+    link: "https://docs.google.com/forms/d/e/1FAIpQLScf47ogrqMZbXE34T-746SJz2-o9p0dy7FWKgOAtJRVq0Natg/viewform",
   },
   {
     title: "Player Form (printable)",
