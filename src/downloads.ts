@@ -66,7 +66,7 @@ export const LEAGUE_LOGOS: LeagueLogos[] = [
       { title: "Shigao Premier League", file: "logos/spl/shigao-premier-league.png" },
       { title: "Ajoba Warrior's",       file: "logos/spl/ajoba-warriors.jpeg" },
       { title: "Parthvik Jaguar's",     file: "logos/spl/parthvik-jaguars.jpeg" },
-      { title: "Shrisha Striker's",     file: "" },
+      { title: "Shrisha Striker's",     file: "logos/spl/shrisha-strikers.jpeg" },
       { title: "Shrisha Warrior's",     file: "logos/spl/shrisha-warriors.jpeg" },
       { title: "Mandev Cricketer's",    file: "" },
       { title: "MSC Warrior's",         file: "logos/spl/msc-warriors.jpeg" },
